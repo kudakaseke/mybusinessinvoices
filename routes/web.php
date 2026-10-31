@@ -1,7 +1,10 @@
 <?php
 
+use App\Http\Controllers\ActivityController;
 use App\Http\Controllers\CreditNoteController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\DocumentWorkflowController;
+use App\Http\Controllers\PaymentWorkflowController;
 use App\Http\Controllers\StatementController;
 use App\Http\Controllers\WorkspaceController;
 use Illuminate\Support\Facades\Route;
@@ -11,11 +14,24 @@ Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
+Route::view('features', 'features')->name('features');
+Route::view('pricing', 'pricing')->name('pricing');
+
 Route::get('dashboard', [WorkspaceController::class, 'overview'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('activity', ActivityController::class)->name('activity');
+    Route::get('drafts', [DocumentWorkflowController::class, 'drafts'])->name('drafts.index');
+    Route::delete('drafts/{draft}', [DocumentWorkflowController::class, 'deleteDraft'])->whereUuid('draft')->name('drafts.destroy');
+    Route::post('{kind}/draft', [DocumentWorkflowController::class, 'saveDraft'])->where('kind', 'invoices|quotations')->name('drafts.save');
+    Route::post('quotations/{record}/convert', [DocumentWorkflowController::class, 'convert'])->whereNumber('record')->name('quotations.convert');
+    Route::post('{kind}/{record}/email', [DocumentWorkflowController::class, 'email'])->where('kind', 'invoices|quotations')->whereNumber('record')->middleware('throttle:outgoing-mail')->name('documents.email');
+    Route::post('invoices/{record}/remind', [DocumentWorkflowController::class, 'remind'])->whereNumber('record')->middleware('throttle:outgoing-mail')->name('invoices.remind');
+    Route::post('invoices/{record}/payments/{payment}/void', [PaymentWorkflowController::class, 'void'])->whereNumber(['record', 'payment'])->name('payments.void');
+    Route::get('invoices/{record}/payments/{payment}/receipt', [PaymentWorkflowController::class, 'receipt'])->whereNumber(['record', 'payment'])->name('payments.receipt');
+    Route::post('invoices/{record}/refunds', [PaymentWorkflowController::class, 'refund'])->whereNumber('record')->name('invoices.refunds');
     Route::get('credit-notes', [CreditNoteController::class, 'index'])->name('credit-notes.index');
     Route::get('credit-notes/create', [CreditNoteController::class, 'create'])->name('credit-notes.create');
     Route::post('invoices/{record}/credit-notes', [CreditNoteController::class, 'store'])->whereNumber('record')->name('credit-notes.store');

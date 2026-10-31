@@ -25,7 +25,7 @@
         @else
         <p class="mt-3 mb-6 text-sm text-zinc-500">Your document is ready. Choose what to do next.</p>
         <x-document-actions :document="$document" :kind="$kind" />
-        <p class="mt-5 text-xs leading-5 text-zinc-500">Print opens the print dialog. Download saves a PDF. Attach it to your email or WhatsApp draft.</p>
+        <p class="mt-5 text-xs leading-5 text-zinc-500">Email PDF sends the document directly to your client. Email draft and WhatsApp open drafts where you can attach the downloaded PDF.</p>
         @endif
         <div class="mt-6 flex flex-wrap items-center justify-center gap-4">
             <flux:button :href="route('documents.index', $kind)" wire:navigate>Back to {{ $kind }}</flux:button>
@@ -40,6 +40,14 @@
     <summary class="cursor-pointer font-semibold">Record a payment</summary>
     <div class="mt-4 max-w-lg"><x-invoice-payment-form :document="$document" /></div>
 </details>
+@endif
+@if($kind === 'quotations')
+    <form method="POST" action="{{ route('quotations.convert', $document->id) }}" class="mb-6 print:hidden">@csrf<flux:button type="submit" variant="primary">Convert to invoice</flux:button></form>
+@elseif($document->isOverdue())
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-xl bg-red-50 p-5 text-red-900 print:hidden">
+        <p><strong>Overdue</strong> — {{ $document->currency }} {{ $document->balanceDue() }} is still unpaid.</p>
+        <form method="POST" action="{{ route('invoices.remind', $document->id) }}">@csrf<flux:button type="submit">Send payment reminder</flux:button></form>
+    </div>
 @endif
 <article class="uppercase invoice-paper min-h-[1000px] rounded-xl border border-zinc-200 bg-white p-6 text-[#151915] shadow-sm md:p-12">
 <div class="flex items-start justify-between gap-8"><div><h1 class="text-3xl font-semibold">{{ $kind==='invoices'?'Invoice':'Quotation' }}</h1><dl class="mt-6 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs"><dt class="font-semibold">{{ $kind==='invoices'?'Invoice':'Quotation' }} number</dt><dd>{{ $kind==='invoices'?$document->invoice_number:$document->quotation_number }}</dd><dt>Date of issue</dt><dd>{{ $document->issue_date->format('F j, Y') }}</dd><dt>{{ $kind==='invoices'?'Date due':'Valid until' }}</dt><dd>{{ $document->due_date->format('F j, Y') }}</dd></dl></div><span class="max-w-56 text-right text-2xl font-light text-[#103b26]">{{ $document->business_name }}</span></div>
@@ -56,7 +64,25 @@
     <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-xl font-semibold">Payment history</h2><a class="text-sm underline" href="{{ route('statements', ['client' => $document->customer_email, 'currency' => $document->currency]) }}" wire:navigate>View client statement</a></div>
     <p>Received: <strong>{{ $document->currency }} {{ number_format($document->paidAmount(), 2) }}</strong> &middot; Still to pay: <strong>{{ $document->currency }} {{ number_format($document->balanceDue(), 2) }}</strong></p>
     <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th class="pb-3">Payment date</th><th>Reference</th><th class="text-right">Amount received ({{ $document->currency }})</th></tr></thead><tbody>
-        @forelse($document->payments as $payment)<tr class="border-t border-zinc-200 dark:border-zinc-700"><td class="py-3">{{ $payment->paid_on?->format('d M Y') ?? 'Original date unknown' }}</td><td>{{ $payment->reference ?? '—' }}</td><td class="text-right">{{ number_format($payment->amount, 2) }}</td></tr>@empty<tr><td colspan="3" class="py-4 text-zinc-500">No payments recorded yet.</td></tr>@endforelse
+        @forelse($document->paymentHistory as $payment)<tr class="border-t border-zinc-200 dark:border-zinc-700">
+            <td class="py-3">{{ $payment->paid_on?->format('d M Y') ?? 'Original date unknown' }}</td>
+            <td class="py-3">{{ $payment->reference ?? '—' }}
+                @if($payment->trashed())
+                    <p class="mt-2 text-sm text-red-600">Reversed on {{ $payment->voided_on?->format('d M Y') }}: {{ $payment->void_reason }}</p>
+                @else
+                    <a class="ml-3 underline" href="{{ route('payments.receipt', [$document->id, $payment->id]) }}">Download receipt</a>
+                    <details class="mt-2"><summary class="cursor-pointer text-xs text-red-600">Correct this payment</summary>
+                        <form method="POST" action="{{ route('payments.void', [$document->id, $payment->id]) }}" class="mt-3 grid max-w-sm gap-3">@csrf
+                            <p class="text-xs text-zinc-500">Reverse the mistaken entry, then record the correct payment. The original is kept for your records.</p>
+                            <flux:input name="voided_on" type="date" label="Correction date" :value="today('Africa/Johannesburg')->toDateString()" required />
+                            <flux:input name="reason" label="Reason for correction" maxlength="255" required />
+                            <flux:button type="submit" variant="danger">Reverse payment</flux:button>
+                        </form>
+                    </details>
+                @endif
+            </td>
+            <td class="text-right {{ $payment->trashed() ? 'text-zinc-500 line-through' : '' }}">{{ number_format($payment->amount, 2) }}</td>
+        </tr>@empty<tr><td colspan="3" class="py-4 text-zinc-500">No payments recorded yet.</td></tr>@endforelse
     </tbody></table></div>
     @if((float) $document->balanceDue() <= 0)
         <p class="font-medium text-emerald-700 dark:text-emerald-300">{{ (float) $document->creditedAmount() > 0 ? 'Settled with credit notes. Nothing left to pay.' : 'Fully paid. Nothing left to pay.' }}</p>
@@ -65,11 +91,28 @@
 <section class="mt-6 space-y-5 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-[#10261c] print:hidden">
     <h2 class="text-xl font-semibold">Credit notes</h2>
     <p>Credits issued: <strong>{{ $document->currency }} {{ number_format($document->creditedAmount(), 2) }}</strong></p>
-    @if((float) $document->customerCredit() > 0)<p class="rounded-lg bg-amber-50 p-4 text-amber-900">Client credit: <strong>{{ $document->currency }} {{ number_format($document->customerCredit(), 2) }}</strong>. This is owed back to the client. No cash refund has been recorded.</p>@endif
+    @if((float) $document->customerCredit() > 0)<p class="rounded-lg bg-amber-50 p-4 text-amber-900">Client credit: <strong>{{ $document->currency }} {{ number_format($document->customerCredit(), 2) }}</strong>. This amount is available to refund. @if((float) $document->refundedAmount() === 0.0)No cash refund has been recorded.@endif</p>@endif
     <ul class="space-y-3">@foreach($document->creditNotes as $note)<li><a class="underline" href="{{ route('credit-notes.download', $note->id) }}">{{ $note->number }} · {{ $note->credited_on->format('d M Y') }} · {{ $document->currency }} {{ number_format($note->amount, 2) }} · Download PDF</a><p class="text-sm text-zinc-500">{{ $note->reason }}</p></li>@endforeach</ul>
     @if((float) $document->creditRemaining() > 0)
     <details @if($errors->any()) open @endif><summary class="cursor-pointer font-medium">Issue a credit note</summary>
         <x-credit-note-form :document="$document" />
+    </details>
+    @endif
+</section>
+<section class="mt-6 space-y-4 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-[#10261c] print:hidden">
+    <h2 class="text-xl font-semibold">Cash refunds</h2>
+    <p>Already refunded: <strong>{{ $document->currency }} {{ $document->refundedAmount() }}</strong></p>
+    <ul class="space-y-2">@foreach($document->refunds as $refund)<li>{{ $refund->refunded_on->format('d M Y') }} · {{ $document->currency }} {{ $refund->amount }} · {{ $refund->reason }}</li>@endforeach</ul>
+    @if((float) $document->customerCredit() > 0)
+    <details><summary class="cursor-pointer font-semibold">Record a cash refund</summary>
+        <form method="POST" action="{{ route('invoices.refunds', $document->id) }}" class="mt-4 grid max-w-lg gap-4">@csrf
+            <input type="hidden" name="submission_key" value="{{ Illuminate\Support\Str::uuid() }}" />
+            <p class="text-sm text-zinc-500">Only record money actually returned to the client. A credit note alone does not return cash.</p>
+            <flux:input type="number" name="amount" label="Amount returned" min="0.01" step="0.01" :max="$document->customerCredit()" required />
+            <flux:input type="date" name="refunded_on" label="Refund date" :value="today('Africa/Johannesburg')->toDateString()" required />
+            <flux:input name="reason" label="Reason or payment reference" maxlength="255" required />
+            <flux:button type="submit" variant="primary">Record refund</flux:button>
+        </form>
     </details>
     @endif
 </section>

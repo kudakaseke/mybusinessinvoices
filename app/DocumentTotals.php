@@ -8,14 +8,18 @@ class DocumentTotals
 {
     public static function scaled(string|int|float $value): int
     {
-        $parts = explode('.', (string) $value);
+        $negative = str_starts_with((string) $value, '-');
+        $parts = explode('.', ltrim((string) $value, '+-'));
+        $amount = ((int) $parts[0] * 100) + (int) str_pad(substr($parts[1] ?? '', 0, 2), 2, '0');
 
-        return ((int) $parts[0] * 100) + (int) str_pad(substr($parts[1] ?? '', 0, 2), 2, '0');
+        return $negative ? -$amount : $amount;
     }
 
     public static function decimal(int $value): string
     {
-        return sprintf('%d.%02d', intdiv($value, 100), $value % 100);
+        $amount = abs($value);
+
+        return ($value < 0 ? '-' : '').sprintf('%d.%02d', intdiv($amount, 100), $amount % 100);
     }
 
     /** @param list<array{description: string, quantity: mixed, unit_price: mixed, product_id?: mixed}> $items

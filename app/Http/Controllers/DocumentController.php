@@ -6,6 +6,7 @@ use App\DocumentPdf;
 use App\DocumentTotals;
 use App\Http\Requests\SaveDocumentRequest;
 use App\Models\Client;
+use App\Models\DocumentDraft;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\InvoicePayment;
@@ -18,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -38,11 +40,16 @@ class DocumentController extends Controller
     public function index(Request $request, string $kind): View
     {
         $request->validate(['search' => ['nullable', 'string', 'max:255']]);
+        $request->validate(['status' => ['nullable', 'in:overdue']]);
         $number = $kind === 'invoices' ? 'invoice_number' : 'quotation_number';
         $records = $this->model($kind)::where('user_id', $request->user()->id)
+            ->when($kind === 'invoices' && $request->input('status') === 'overdue', fn ($query) => $query->whereDate('due_date', '<', today('Africa/Johannesburg'))->whereNotIn('status', ['paid', 'settled', 'credited']))
             ->when($request->filled('search'), fn ($query) => $query->where(function ($query) use ($request, $number) {
                 $query->where($number, 'like', '%'.$request->string('search').'%')->orWhere('customer_name', 'like', '%'.$request->string('search').'%');
             }))->latest('id')->paginate(15)->withQueryString();
+        if ($kind === 'invoices') {
+            $records->getCollection()->load(['payments', 'paymentHistory', 'creditNotes', 'refunds']);
+        }
 
         return view('documents.index', compact('records', 'kind', 'number'));
     }
@@ -74,11 +81,22 @@ class DocumentController extends Controller
 
     private function form(Request $request, string $kind, Model $document): View
     {
+        $request->validate(['draft' => ['nullable', 'uuid']]);
+        $draft = $request->filled('draft')
+            ? DocumentDraft::where('user_id', $request->user()->id)->where('kind', $kind)->where('key', $request->input('draft'))->firstOrFail()
+            : null;
+        $draftKey = $draft?->key ?? $request->old('draft_key') ?? (string) Str::uuid();
+        $draftPayload = $draft?->payload ?? [];
+        if ($draft) {
+            $document->fill(Arr::except($draftPayload, ['items', 'quotation_id']));
+        }
         $clients = Client::where('user_id', $request->user()->id)->orderBy('name')->get();
         $products = Product::where('user_id', $request->user()->id)->orderBy('name')->get();
         $items = $document->exists ? $document->items()->get()->map(fn ($item) => Arr::only($item->toArray(), ['product_id', 'description', 'quantity', 'unit_price']))->all() : [['description' => '', 'quantity' => '1', 'unit_price' => '0', 'product_id' => null]];
 
-        return view('documents.form', compact('kind', 'document', 'clients', 'products', 'items'));
+        $items = $draftPayload['items'] ?? $items;
+
+        return view('documents.form', compact('kind', 'document', 'clients', 'products', 'items', 'draftKey', 'draftPayload'));
     }
 
     public function edit(Request $request, string $kind, int $record): View
@@ -134,7 +152,14 @@ class DocumentController extends Controller
         $data = $request->validated();
         $totals = $calculator->calculate($data['items'], $data['vat_rate'], $data['discount_rate']);
         DB::transaction(function () use ($document, $data, $totals, $request) {
-            $document->fill(Arr::except($data, ['items']));
+            if (! empty($data['quotation_id'])) {
+                $quote = Quotation::where('user_id', $request->user()->id)->lockForUpdate()->findOrFail($data['quotation_id']);
+                if (Invoice::where('quotation_id', $quote->id)->exists()) {
+                    throw ValidationException::withMessages(['quotation_id' => 'This quotation has already been converted to an invoice.']);
+                }
+                $document->quotation_id = $quote->id;
+            }
+            $document->fill(Arr::except($data, ['items', 'draft_key', 'quotation_id']));
             $document->fill(Arr::except($totals, ['items']));
             if ($document instanceof Invoice) {
                 $document->status = DocumentTotals::scaled($document->total) === 0 ? 'paid' : 'outstanding';
@@ -143,6 +168,9 @@ class DocumentController extends Controller
             $document->save();
             $document->items()->delete();
             $document->items()->createMany($totals['items']);
+            if (! empty($data['draft_key'])) {
+                DocumentDraft::where('user_id', $request->user()->id)->where('key', $data['draft_key'])->delete();
+            }
             Client::where('user_id', $request->user()->id)
                 ->whereRaw('LOWER(email) = ?', [mb_strtolower($data['customer_email'])])->firstOrCreate([], [
                     'user_id' => $request->user()->id,
@@ -158,7 +186,7 @@ class DocumentController extends Controller
 
     public function show(Request $request, string $kind, int $record): View
     {
-        $document = $this->owned($request, $kind, $record)->load($kind === 'invoices' ? ['items', 'payments', 'creditNotes'] : ['items']);
+        $document = $this->owned($request, $kind, $record)->load($kind === 'invoices' ? ['items', 'payments', 'creditNotes', 'refunds', 'paymentHistory'] : ['items']);
 
         return view('documents.show', compact('kind', 'document'));
     }

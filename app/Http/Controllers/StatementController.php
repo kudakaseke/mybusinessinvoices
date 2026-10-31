@@ -58,7 +58,7 @@ class StatementController extends Controller
         $currency = $data['currency'] ?? 'USD';
         $invoices = Invoice::where('user_id', $request->user()->id)
             ->when($client, fn ($query) => $query->whereRaw('LOWER(customer_email) = ?', [$client]))
-            ->where('currency', $currency)->with(['payments', 'creditNotes'])->orderBy('issue_date')->orderBy('id')->get();
+            ->where('currency', $currency)->with(['payments', 'paymentHistory', 'creditNotes', 'refunds'])->orderBy('issue_date')->orderBy('id')->get();
         $entries = collect();
         foreach ($invoices as $invoice) {
             $entries->push([
@@ -66,13 +66,29 @@ class StatementController extends Controller
                 'client' => $invoice->customer_name, 'invoice' => $invoice, 'description' => 'Invoice '.$invoice->invoice_number,
                 'charged' => DocumentTotals::scaled($invoice->total), 'received' => 0, 'credited' => 0, 'order' => 0,
             ]);
-            foreach ($invoice->payments as $payment) {
+            foreach ($invoice->paymentHistory as $payment) {
                 $entries->push([
                     'date' => $payment->paid_on?->toDateString() ?? $invoice->issue_date->toDateString(),
                     'date_label' => $payment->paid_on?->format('d M Y') ?? 'Original date unknown',
                     'client' => $invoice->customer_name, 'invoice' => $invoice,
                     'description' => 'Payment for '.$invoice->invoice_number.($payment->reference ? ' — '.$payment->reference : ''),
                     'charged' => 0, 'received' => DocumentTotals::scaled($payment->amount), 'credited' => 0, 'order' => 1,
+                ]);
+                if ($payment->trashed()) {
+                    $entries->push([
+                        'date' => $payment->voided_on->toDateString(), 'date_label' => $payment->voided_on->format('d M Y'),
+                        'client' => $invoice->customer_name, 'invoice' => $invoice,
+                        'description' => 'Payment reversal for '.$invoice->invoice_number.': '.$payment->void_reason,
+                        'charged' => 0, 'received' => -DocumentTotals::scaled($payment->amount), 'credited' => 0, 'order' => 3,
+                    ]);
+                }
+            }
+            foreach ($invoice->refunds as $refund) {
+                $entries->push([
+                    'date' => $refund->refunded_on->toDateString(), 'date_label' => $refund->refunded_on->format('d M Y'),
+                    'client' => $invoice->customer_name, 'invoice' => $invoice,
+                    'description' => 'Cash refund for '.$invoice->invoice_number.': '.$refund->reason,
+                    'charged' => 0, 'received' => -DocumentTotals::scaled($refund->amount), 'credited' => 0, 'order' => 4,
                 ]);
             }
             foreach ($invoice->creditNotes as $note) {

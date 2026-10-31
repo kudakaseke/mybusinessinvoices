@@ -2,6 +2,8 @@
 @php
 $number = $kind === 'invoices' ? 'invoice_number' : 'quotation_number';
 $initial = [
+    'draftKey' => $draftKey,
+    'draftUrl' => route('drafts.save', $kind),
     'items' => old('items',$items),
     'clients' => $clients->map(fn($client) => $client->only(['id','name','email','address','phone']))->values(),
     'products' => $products->map(fn($product) => $product->only(['id','name','description','unit_price','currency']))->values(),
@@ -23,10 +25,13 @@ $initial = [
         <span class="text-xs text-zinc-500">Click the document fields to enter your details.</span>
     </div>
     <x-save-errors />
-    <form method="POST" action="{{ $document->exists ? route('documents.update',[$kind,$document->id]) : route('documents.review',$kind) }}" x-data="documentEditor({{ Illuminate\Support\Js::from($initial) }})">
+    <form method="POST" action="{{ $document->exists ? route('documents.update',[$kind,$document->id]) : route('documents.review',$kind) }}" x-data="documentEditor({{ Illuminate\Support\Js::from($initial) }})" x-on:input="queueDraft()" x-on:change="queueDraft()" x-on:submit.prevent="submitReview($event)" x-on:click.window.capture="guardLink($event)" x-on:beforeunload.window="if (!submitting && (dirty || saving)) { $event.preventDefault(); $event.returnValue = '' }">
         @csrf
+        <input type="hidden" name="draft_key" value="{{ $draftKey }}" />
+        @if($kind === 'invoices' && old('quotation_id', $draftPayload['quotation_id'] ?? null))<input type="hidden" name="quotation_id" value="{{ old('quotation_id', $draftPayload['quotation_id'] ?? null) }}" />@endif
         @if($document->exists) @method('PUT') @endif
         <div x-show="!reviewing" class="mb-5 flex flex-wrap items-end gap-4 print:hidden">
+            <div class="flex items-center gap-3"><flux:button type="button" x-on:click="saveDraft()" x-bind:disabled="saving || submitting">Save draft</flux:button><span role="status" class="text-xs text-zinc-500" x-text="draftStatus">Unsaved draft</span><a class="text-xs underline" href="{{ route('drafts.index') }}" wire:navigate>Saved drafts</a></div>
             <div><label for="document-currency" class="mb-1 block text-xs">Currency</label><select id="document-currency" name="currency" x-model="currency" x-on:change="items.forEach(item => item.product_id = '')" class="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-black"><option value="USD">USD</option><option value="ZWG">ZWG</option></select></div>
             @if($kind==='invoices')
                 <input type="hidden" name="status" value="outstanding" />
@@ -82,7 +87,7 @@ $initial = [
         </article>
         <section x-bind:inert="reviewing" class="mt-6 flex flex-wrap items-center gap-4 rounded-xl border border-zinc-200 bg-white p-5 text-black">
             <label for="prepared-by" class="text-sm font-medium">Prepared by</label>
-            <input id="prepared-by" name="prepared_by" required value="{{ old('prepared_by',$document->exists ? $document->prepared_by : '') }}" placeholder="Name and surname" autocomplete="name" maxlength="255" class="min-w-0 flex-1 border-0 border-b border-zinc-400 bg-transparent px-2 py-2 text-sm focus:outline-emerald-700" />
+            <input id="prepared-by" name="prepared_by" required value="{{ old('prepared_by',$draftPayload['prepared_by'] ?? ($document->exists ? $document->prepared_by : '')) }}" placeholder="Name and surname" autocomplete="name" maxlength="255" class="min-w-0 flex-1 border-0 border-b border-zinc-400 bg-transparent px-2 py-2 text-sm focus:outline-emerald-700" />
             <span class="text-xs text-zinc-500">(name and surname)</span>
         </section>
         <details x-bind:open="reviewing" x-bind:inert="reviewing" class="mt-6 rounded-xl border border-zinc-200 bg-white p-5 text-black">

@@ -10,6 +10,7 @@ $whatsappUrl = 'https://wa.me/'.($phone ?: '').'?text='.rawurlencode($message);
 <div {{ $attributes->class(['flex flex-wrap justify-center gap-3']) }}>
     <flux:button type="button" onclick="window.print()">Print</flux:button>
     <flux:button :href="route('documents.download', [$kind, $document->id])" variant="primary">Download PDF</flux:button>
-    <flux:button :href="$emailUrl">Email</flux:button>
+    <form method="POST" action="{{ route('documents.email', [$kind, $document->id]) }}">@csrf<flux:button type="submit">Email PDF</flux:button></form>
+    <flux:button :href="$emailUrl">Email draft</flux:button>
     <flux:button :href="$whatsappUrl" target="_blank" rel="noopener noreferrer">WhatsApp</flux:button>
 </div>

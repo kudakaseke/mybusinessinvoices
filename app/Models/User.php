@@ -60,7 +60,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'business_name', 'business_address', 'business_email', 'business_phone',
         'whatsapp_number', 'website', 'default_currencies', 'base_currency',
         'target_currency', 'exchange_rate', 'usd_to_zwg_rate', 'default_tax_rate',
-        'business_profile_completed_at',
+        'business_profile_completed_at', 'payment_reminders_enabled',
     ];
 
     /**
@@ -82,6 +82,7 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'payment_reminders_enabled' => 'boolean',
             'password' => 'hashed',
             'default_currencies' => 'array',
             'business_profile_completed_at' => 'datetime',

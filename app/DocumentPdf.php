@@ -3,6 +3,7 @@
 namespace App;
 
 use App\Models\CreditNote;
+use App\Models\InvoicePayment;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
@@ -107,6 +108,9 @@ class DocumentPdf
         }
         if ($invoice) {
             $rows[] = ['Payments received', $money($document->exists ? $document->paidAmount() : 0).' '.$document->currency];
+            if ($document->exists && (float) $document->refundedAmount() > 0) {
+                $rows[] = ['Cash refunded', $money($document->refundedAmount()).' '.$document->currency];
+            }
             if ($document->exists && (float) $document->customerCredit() > 0) {
                 $rows[] = ['Client credit (not refunded)', $money($document->customerCredit()).' '.$document->currency];
             }
@@ -239,6 +243,32 @@ class DocumentPdf
         $this->y = $this->block('Reason: '.$note->reason, 30, $this->y + 25, 80);
         $this->text('Credit amount (including tax): '.$invoice->currency.' '.number_format($note->amount, 2), 30, $this->y + 30, 14, true);
         $this->text('This credit reduces the original invoice charge. It is not a cash refund.', 30, $this->y + 55, 9);
+        $this->pages[] = $this->content;
+
+        return $this->encode();
+    }
+
+    public function renderReceipt(InvoicePayment $payment): string
+    {
+        $this->pages = [];
+        $this->content = '';
+        $invoice = $payment->invoice;
+        $this->text('Payment receipt', 30, 45, 20, true);
+        $this->y = 90;
+        foreach ([
+            'Receipt number' => 'RCT-'.$payment->id,
+            'Business' => $invoice->business_name,
+            'Client' => $invoice->customer_name,
+            'Invoice' => $invoice->invoice_number,
+            'Payment date' => $payment->paid_on?->format('d M Y') ?? 'Original date unknown',
+            'Amount received' => $invoice->currency.' '.number_format($payment->amount, 2),
+            'Reference' => $payment->reference ?? 'Not provided',
+            'Current invoice balance' => $invoice->currency.' '.$invoice->balanceDue(),
+        ] as $label => $value) {
+            $this->y = $this->block($label.': '.$value, 30, $this->y, 85);
+            $this->y += 16;
+        }
+        $this->text('This receipt confirms the payment recorded against the invoice.', 30, $this->y + 20, 9);
         $this->pages[] = $this->content;
 
         return $this->encode();

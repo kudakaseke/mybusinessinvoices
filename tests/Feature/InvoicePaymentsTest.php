@@ -3,6 +3,7 @@
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\User;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -162,6 +163,12 @@ test('existing paid invoices keep a clearly labelled payment record without inve
     $migration = require database_path('migrations/2026_10_30_174450_create_invoice_payments_table.php');
 
     $migration->up();
+
+    Schema::table('invoice_payments', function (Blueprint $table): void {
+        $table->softDeletes();
+        $table->string('void_reason')->nullable();
+        $table->date('voided_on')->nullable();
+    });
 
     $this->assertDatabaseHas('invoice_payments', ['invoice_id' => $invoice->id, 'amount' => '100.00', 'paid_on' => null]);
     $this->actingAs($user)->get('/statements?client=client@example.com&currency=USD')

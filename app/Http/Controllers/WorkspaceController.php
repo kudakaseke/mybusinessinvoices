@@ -8,6 +8,7 @@ use App\Models\CreditNote;
 use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
+use App\Models\InvoiceRefund;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\User;
@@ -46,15 +47,33 @@ class WorkspaceController extends Controller
                 ]);
             }
         }
-        $payments = InvoicePayment::whereHas('invoice', fn ($query) => $query->where('user_id', $userId))
-            ->where('paid_on', '>=', $start->toDateString())->where('paid_on', '<', $end->addDay()->toDateString())
+        $payments = InvoicePayment::withTrashed()->whereHas('invoice', fn ($query) => $query->where('user_id', $userId))
+            ->where(fn ($query) => $query->whereBetween('paid_on', [$start->toDateString(), $end->toDateString()])->orWhereBetween('voided_on', [$start->toDateString(), $end->toDateString()]))
             ->with('invoice')->orderBy('id')->get();
         foreach ($payments as $payment) {
+            if ($payment->paid_on && $payment->paid_on->toDateString() >= $start->toDateString() && $payment->paid_on->toDateString() <= $end->toDateString()) {
+                $events->push([
+                    'date' => $payment->paid_on->toDateString(), 'type' => 'payments', 'label' => 'Received payment',
+                    'number' => $payment->invoice->invoice_number, 'name' => $payment->invoice->customer_name,
+                    'amount' => $payment->amount, 'currency' => $payment->invoice->currency,
+                    'url' => route('documents.show', ['invoices', $payment->invoice_id]),
+                ]);
+            }
+            if ($payment->trashed() && $payment->voided_on && $payment->voided_on->toDateString() >= $start->toDateString() && $payment->voided_on->toDateString() <= $end->toDateString()) {
+                $events->push([
+                    'date' => $payment->voided_on->toDateString(), 'type' => 'payments', 'label' => 'Payment reversal',
+                    'number' => $payment->invoice->invoice_number, 'name' => $payment->invoice->customer_name,
+                    'amount' => '-'.$payment->amount, 'currency' => $payment->invoice->currency,
+                    'url' => route('documents.show', ['invoices', $payment->invoice_id]),
+                ]);
+            }
+        }
+        foreach (InvoiceRefund::whereHas('invoice', fn ($query) => $query->where('user_id', $userId))->whereBetween('refunded_on', [$start->toDateString(), $end->toDateString()])->with('invoice')->get() as $refund) {
             $events->push([
-                'date' => $payment->paid_on->toDateString(), 'type' => 'payments', 'label' => 'Received payment',
-                'number' => $payment->invoice->invoice_number, 'name' => $payment->invoice->customer_name,
-                'amount' => $payment->amount, 'currency' => $payment->invoice->currency,
-                'url' => route('documents.show', ['invoices', $payment->invoice_id]),
+                'date' => $refund->refunded_on->toDateString(), 'type' => 'payments', 'label' => 'Cash refund',
+                'number' => $refund->invoice->invoice_number, 'name' => $refund->invoice->customer_name,
+                'amount' => '-'.$refund->amount, 'currency' => $refund->invoice->currency,
+                'url' => route('documents.show', ['invoices', $refund->invoice_id]),
             ]);
         }
         $expenses = Expense::where('user_id', $userId)->where('expense_date', '>=', $start->toDateString())
@@ -96,7 +115,7 @@ class WorkspaceController extends Controller
         $userId = $request->user()->id;
         $title = ucfirst($request->route()->getName());
         $invoices = Invoice::where('user_id', $userId);
-        $received = "CASE WHEN status = 'paid' THEN total ELSE COALESCE((SELECT SUM(amount) FROM invoice_payments WHERE invoice_payments.invoice_id = invoices.id), 0) END";
+        $received = "CASE WHEN status = 'paid' AND NOT EXISTS (SELECT 1 FROM invoice_payments WHERE invoice_payments.invoice_id = invoices.id) THEN total ELSE COALESCE((SELECT SUM(amount) FROM invoice_payments WHERE invoice_payments.invoice_id = invoices.id AND invoice_payments.deleted_at IS NULL), 0) END - COALESCE((SELECT SUM(amount) FROM invoice_refunds WHERE invoice_refunds.invoice_id = invoices.id), 0)";
         $credits = 'COALESCE((SELECT SUM(amount) FROM credit_notes WHERE credit_notes.invoice_id = invoices.id), 0)';
         $balance = "total - ($received) - ($credits)";
         $totals = (clone $invoices)->selectRaw("currency, SUM(total) AS billed, SUM($received) AS paid, SUM($credits) AS credited, SUM(CASE WHEN ($balance) > 0 THEN ($balance) ELSE 0 END) AS outstanding, SUM(CASE WHEN ($balance) < 0 THEN -($balance) ELSE 0 END) AS client_credit")->groupBy('currency')->get();
@@ -131,9 +150,19 @@ class WorkspaceController extends Controller
         $invoices = Invoice::where('user_id', $request->user()->id)->where('currency', $currency)
             ->where('issue_date', '>=', $start->toDateString())->where('issue_date', '<', $today->addDay()->toDateString())
             ->selectRaw('SUBSTR(issue_date, 1, 10) AS day, SUM(total) AS amount')->groupBy('day')->get();
-        $payments = InvoicePayment::whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
+        $payments = InvoicePayment::withTrashed()->whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
             ->where('paid_on', '>=', $start->toDateString())->where('paid_on', '<', $today->addDay()->toDateString())
             ->selectRaw('SUBSTR(paid_on, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
+        $reversals = InvoicePayment::withTrashed()->whereNotNull('deleted_at')->whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
+            ->whereBetween('voided_on', [$start->toDateString(), $today->toDateString()])
+            ->selectRaw('SUBSTR(voided_on, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
+        $refunds = InvoiceRefund::whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
+            ->whereBetween('refunded_on', [$start->toDateString(), $today->toDateString()])
+            ->selectRaw('SUBSTR(refunded_on, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
+        foreach ($reversals->concat($refunds) as $entry) {
+            $entry->amount = '-'.$entry->amount;
+            $payments->push($entry);
+        }
         $expenses = Expense::where('user_id', $request->user()->id)->where('currency', $currency)
             ->where('expense_date', '>=', $start->toDateString())->where('expense_date', '<', $today->addDay()->toDateString())
             ->selectRaw('SUBSTR(expense_date, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
@@ -256,6 +285,7 @@ class WorkspaceController extends Controller
             'exchange_rate' => ['required', 'numeric', 'min:0.000001', 'max:99999999.999999', 'decimal:0,6'],
             'default_tax_rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
             'default_currencies' => ['required', 'array', 'min:1'],
+            'payment_reminders_enabled' => ['sometimes', 'boolean'],
             'default_currencies.*' => ['required', Rule::in(['USD', 'ZWG']), 'distinct'],
         ];
         $data = $request->validate($rules);

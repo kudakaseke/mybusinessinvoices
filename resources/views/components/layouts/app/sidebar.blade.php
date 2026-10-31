@@ -12,6 +12,7 @@
 @endforeach
 </flux:navlist.group>
 <flux:navlist.group heading="Finance" class="mt-6 grid">
+<flux:navlist.item :href="route('drafts.index')" :current="request()->routeIs('drafts.*')" wire:navigate>Saved drafts</flux:navlist.item>
 @foreach (['invoices' => 'Invoices', 'quotations' => 'Quotations'] as $kind => $label)
 <flux:navlist.item :href="route('documents.index', $kind)" :current="request()->is($kind.'*')" wire:navigate>{{ $label }}</flux:navlist.item>
 @endforeach
@@ -20,6 +21,7 @@
 <flux:navlist.item :href="route('credit-notes.index')" :current="request()->routeIs('credit-notes.*')" wire:navigate>Credit notes</flux:navlist.item>
 </flux:navlist.group>
 <flux:navlist.group heading="Manage" class="mt-6 grid">
+<flux:navlist.item :href="route('activity')" :current="request()->routeIs('activity')" wire:navigate>Activity history</flux:navlist.item>
 <flux:navlist.item :href="route('records.index', 'products')" :current="request()->is('products*')" wire:navigate>Product</flux:navlist.item>
 <flux:navlist.item :href="route('records.index', 'clients')" :current="request()->is('clients*')" wire:navigate>Client</flux:navlist.item>
 <flux:navlist.item :href="route('settings')" :current="request()->is('settings*')" wire:navigate>Settings</flux:navlist.item>

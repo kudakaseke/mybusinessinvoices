@@ -22,6 +22,7 @@ class SaveDocumentRequest extends FormRequest
         $table = $this->route('kind');
         $number = $table === 'invoices' ? 'invoice_number' : 'quotation_number';
         $rules = [
+            'draft_key' => ['nullable', 'uuid'],
             $number => ['required', 'string', 'max:255', Rule::unique($table, $number)->where('user_id', $this->user()->id)->ignore($this->route('record'))],
             'issue_date' => ['required', 'date'],
             'due_date' => ['required', 'date', 'after_or_equal:issue_date'],
@@ -47,6 +48,7 @@ class SaveDocumentRequest extends FormRequest
             $rules[$field] = ['nullable', 'string', 'max:10000'];
         }
         if ($table === 'invoices') {
+            $rules['quotation_id'] = ['nullable', 'integer', Rule::exists('quotations', 'id')->where('user_id', $this->user()->id), Rule::unique('invoices', 'quotation_id')];
             $rules['status'] = ['required', Rule::in(['outstanding', 'paid'])];
         } else {
             $rules['notes'] = ['nullable', 'string', 'max:10000'];

@@ -28,6 +28,7 @@
         </div>
         @if($from)<p class="text-sm">Opening balance before {{ $from }}: <strong>{{ $currency }} {{ number_format($openingBalance / 100, 2) }}</strong>. The running balance includes this opening amount.</p>@endif
         <h2 class="text-xl font-semibold">Transaction details</h2>
+        <p class="text-sm text-zinc-500">Refunds and payment reversals appear as negative payments. Payment totals are net of these adjustments.</p>
         <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-[#10261c]">
             <table class="w-full min-w-[700px] text-left text-sm">
                 <thead><tr><th class="pb-4">Date</th><th>Client</th><th>Details</th><th class="text-right">Invoice charge<br><span class="font-normal text-zinc-500">Debit</span></th><th class="text-right">Payment received<br><span class="font-normal text-zinc-500">Credit</span></th><th class="text-right">Credit note</th><th class="text-right">Still to pay<br><span class="font-normal text-zinc-500">Running balance</span></th></tr></thead>

@@ -16,7 +16,7 @@ class Invoice extends Model
 
     protected function casts(): array
     {
-        return ['issue_date' => 'date', 'due_date' => 'date', 'subtotal' => 'decimal:2', 'total' => 'decimal:2', 'vat_amount' => 'decimal:2', 'discount_amount' => 'decimal:2'];
+        return ['issue_date' => 'date', 'due_date' => 'date', 'subtotal' => 'decimal:2', 'total' => 'decimal:2', 'vat_amount' => 'decimal:2', 'discount_amount' => 'decimal:2', 'last_reminded_at' => 'datetime'];
     }
 
     public function user(): BelongsTo
@@ -36,7 +36,7 @@ class Invoice extends Model
 
     public function paidAmount(): string
     {
-        if ($this->status === 'paid') {
+        if ($this->status === 'paid' && ($this->relationLoaded('paymentHistory') ? $this->paymentHistory->isEmpty() : ! $this->payments()->withTrashed()->exists())) {
             return (string) $this->total;
         }
 
@@ -49,7 +49,7 @@ class Invoice extends Model
 
     public function balanceDue(): string
     {
-        return DocumentTotals::decimal(max(0, DocumentTotals::scaled($this->total) - DocumentTotals::scaled($this->paidAmount()) - DocumentTotals::scaled($this->creditedAmount())));
+        return DocumentTotals::decimal(max(0, DocumentTotals::scaled($this->total) - DocumentTotals::scaled($this->paidAmount()) - DocumentTotals::scaled($this->creditedAmount()) + DocumentTotals::scaled($this->refundedAmount())));
     }
 
     public function creditNotes(): HasMany
@@ -73,12 +73,36 @@ class Invoice extends Model
 
     public function customerCredit(): string
     {
-        return DocumentTotals::decimal(max(0, DocumentTotals::scaled($this->paidAmount()) + DocumentTotals::scaled($this->creditedAmount()) - DocumentTotals::scaled($this->total)));
+        return DocumentTotals::decimal(max(0, DocumentTotals::scaled($this->paidAmount()) + DocumentTotals::scaled($this->creditedAmount()) - DocumentTotals::scaled($this->total) - DocumentTotals::scaled($this->refundedAmount())));
+    }
+
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(InvoiceRefund::class)->orderBy('refunded_on')->orderBy('id');
+    }
+
+    public function paymentHistory(): HasMany
+    {
+        return $this->hasMany(InvoicePayment::class)->withTrashed()->orderBy('paid_on')->orderBy('id');
+    }
+
+    public function refundedAmount(): string
+    {
+        $amount = $this->relationLoaded('refunds')
+            ? $this->refunds->sum(fn (InvoiceRefund $refund): int => DocumentTotals::scaled($refund->amount))
+            : DocumentTotals::scaled($this->refunds()->sum('amount'));
+
+        return DocumentTotals::decimal($amount);
+    }
+
+    public function isOverdue(): bool
+    {
+        return $this->due_date->lt(today('Africa/Johannesburg')) && DocumentTotals::scaled($this->balanceDue()) > 0;
     }
 
     public function settlementStatus(): string
     {
-        if (DocumentTotals::scaled($this->creditedAmount()) >= DocumentTotals::scaled($this->total) && DocumentTotals::scaled($this->total) > 0) {
+        if (DocumentTotals::scaled($this->creditedAmount()) >= DocumentTotals::scaled($this->total) && DocumentTotals::scaled($this->total) > 0 && DocumentTotals::scaled($this->balanceDue()) === 0) {
             return 'credited';
         }
         if (DocumentTotals::scaled($this->balanceDue()) === 0) {
