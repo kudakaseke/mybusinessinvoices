@@ -38,7 +38,7 @@ test('credit notes reduce invoice balances and appear separately from cash in st
     expect((float) $report->outstanding)->toBe(70.0);
     expect((float) $report->paid)->toBe(0.0);
     expect((float) $report->credited)->toBe(30.0);
-    $calendar = $this->get('/calendar?month=2026-10')->assertOk()->assertSee($note->number);
+    $calendar = $this->get('/calendar?month=2026-10')->assertOk()->assertSee('Total Credit Notes:');
     expect($calendar->viewData('events')['2026-10-20']->first()['type'])->toBe('credit-notes');
     $pdf = $this->get('/credit-notes/'.$note->id.'/download')->assertOk()->assertHeader('Content-Type', 'application/pdf')->assertDownload($note->number.'.pdf')->getContent();
     expect($pdf)->toStartWith('%PDF-1.4')->toContain($note->number)->toContain('RETURNED GOODS')->toContain('USD 30.00');

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DocumentPdf;
 use App\DocumentTotals;
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\StatementExcel;
 use Illuminate\Http\Request;
@@ -41,7 +42,7 @@ class StatementController extends Controller
         ]);
     }
 
-    /** @return array{clients: \Illuminate\Database\Eloquent\Collection, client: ?string, currency: string, entries: Collection, balance: int, charged: int, received: int, credited: int, daily: Collection, openingBalance: int, from: ?string, to: ?string, paymentInvoices: \Illuminate\Database\Eloquent\Collection} */
+    /** @return array{clients: \Illuminate\Database\Eloquent\Collection, client: ?string, currency: string, entries: Collection, balance: int, charged: int, received: int, credited: int, daily: Collection, openingBalance: int, from: ?string, to: ?string, paymentInvoices: \Illuminate\Database\Eloquent\Collection, expenseEntries: Collection, expenseTotal: int} */
     private function statementData(Request $request): array
     {
         $data = $request->validate([
@@ -97,6 +98,11 @@ class StatementController extends Controller
         $charged = $entries->sum('charged');
         $received = $entries->sum('received');
         $credited = $entries->sum('credited');
+        $expenseEntries = $client ? collect() : Expense::where('user_id', $request->user()->id)->where('currency', $currency)
+            ->when($from, fn ($query) => $query->whereDate('expense_date', '>=', $from))
+            ->when($to, fn ($query) => $query->whereDate('expense_date', '<=', $to))
+            ->orderBy('expense_date')->orderBy('id')->get();
+        $expenseTotal = $expenseEntries->sum(fn (Expense $expense): int => DocumentTotals::scaled($expense->amount));
         $daily = $entries->groupBy(fn (array $entry): string => $entry['date_label'] === 'Original date unknown' ? 'unknown' : $entry['date'])
             ->map(fn (Collection $rows): array => [
                 'date_label' => $rows->first()['date_label'],
@@ -105,6 +111,6 @@ class StatementController extends Controller
                 'balance' => $rows->last()['balance'],
             ])->values();
 
-        return compact('clients', 'client', 'currency', 'entries', 'balance', 'charged', 'received', 'credited', 'daily', 'openingBalance', 'from', 'to', 'paymentInvoices');
+        return compact('clients', 'client', 'currency', 'entries', 'balance', 'charged', 'received', 'credited', 'daily', 'openingBalance', 'from', 'to', 'paymentInvoices', 'expenseEntries', 'expenseTotal');
     }
 }

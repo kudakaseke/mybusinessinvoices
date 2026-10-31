@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\CreditNote;
+use App\Models\Expense;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\User;
@@ -76,4 +77,16 @@ test('Excel exports require authentication validate filters and support empty ac
     $sheet = excelWorksheet($response->getContent());
     expect($sheet->document->textContent)->toContain('ZWG')->toContain('Closing balance');
     $this->get('/statements')->assertOk()->assertSee('Generate Excel')->assertSee(route('statements.excel'));
+});
+
+test('Excel exports include business expenses filtered by currency and date', function () {
+    $user = User::factory()->create();
+    Expense::factory()->for($user)->create(['expense_date' => '2026-10-10', 'amount' => '5.25', 'currency' => 'USD', 'description' => 'Daily food']);
+    Expense::factory()->for($user)->create(['expense_date' => '2026-10-11', 'currency' => 'USD', 'description' => 'Other date']);
+    Expense::factory()->create(['expense_date' => '2026-10-10', 'description' => 'Private food']);
+
+    $response = $this->actingAs($user)->get('/statements/excel?currency=USD&from=2026-10-10&to=2026-10-10')->assertOk()->assertDownload();
+
+    $sheet = excelWorksheet($response->getContent());
+    expect($sheet->document->textContent)->toContain('Business expenses')->toContain('Daily food')->toContain('5.25')->not->toContain('Other date')->not->toContain('Private food');
 });

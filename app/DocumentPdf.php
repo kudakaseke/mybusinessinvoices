@@ -134,7 +134,7 @@ class DocumentPdf
         return $this->encode();
     }
 
-    /** @param array{clients: Collection, client: ?string, currency: string, entries: Collection, balance: int, charged: int, received: int, credited: int, daily: Collection, openingBalance: int, from: ?string, to: ?string, paymentInvoices: Collection} $data */
+    /** @param array{clients: Collection, client: ?string, currency: string, entries: Collection, balance: int, charged: int, received: int, credited: int, daily: Collection, openingBalance: int, from: ?string, to: ?string, paymentInvoices: Collection, expenseEntries: Collection, expenseTotal: int} $data */
     public function renderStatement(array $data, string $business): string
     {
         $this->pages = [];
@@ -200,6 +200,22 @@ class DocumentPdf
         foreach (['charged' => 'Invoice charges', 'received' => 'Payments received', 'credited' => 'Credit notes', 'balance' => ($data['balance'] < 0 ? 'Client credit' : 'Still to pay')] as $field => $label) {
             $this->text($label.': '.$data['currency'].' '.number_format(abs($data[$field]) / 100, 2), 30, $this->y, 11, true);
             $this->y += 20;
+        }
+        if (! $data['client']) {
+            $this->space(85);
+            $this->y += 15;
+            $this->text('Business expenses', 30, $this->y, 12, true);
+            $this->y += 22;
+            foreach ($data['expenseEntries'] as $expense) {
+                $details = $expense->expense_date->format('d M Y').' | '.$expense->merchant.' | '.$expense->category.' | '.$expense->description;
+                $height = count(explode("\n", wordwrap($details, 76, "\n", true))) * 14 + 12;
+                $this->space($height);
+                $this->block($details, 30, $this->y, 76);
+                $this->text(number_format($expense->amount, 2), 505, $this->y, 9);
+                $this->y += $height;
+            }
+            $this->space(30);
+            $this->text('Total expenses: '.$data['currency'].' '.number_format($data['expenseTotal'] / 100, 2), 30, $this->y, 11, true);
         }
         $this->pages[] = $this->content;
 

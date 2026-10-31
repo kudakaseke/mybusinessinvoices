@@ -8,7 +8,7 @@ use RuntimeException;
 
 class StatementExcel
 {
-    /** @param array{clients: Collection, client: ?string, currency: string, entries: Collection, from: ?string, to: ?string, openingBalance: int, charged: int, received: int, credited: int, balance: int} $data */
+    /** @param array{clients: Collection, client: ?string, currency: string, entries: Collection, from: ?string, to: ?string, openingBalance: int, charged: int, received: int, credited: int, balance: int, expenseEntries: Collection, expenseTotal: int} $data */
     public function render(array $data, string $business): string
     {
         $client = $data['client'] ? ($data['clients']->firstWhere('customer_email', $data['client'])?->customer_name ?? $data['client']) : 'All clients';
@@ -24,6 +24,15 @@ class StatementExcel
         $rows[] = [];
         foreach (['charged' => 'Invoice charges', 'received' => 'Payments received', 'credited' => 'Credit notes', 'balance' => 'Closing balance'] as $key => $label) {
             $rows[] = [$label, '', $data[$key]];
+        }
+        if (! $data['client']) {
+            $rows[] = [];
+            $rows[] = ['Business expenses'];
+            $rows[] = ['Date', 'Merchant', 'Description', 'Category', 'Expense amount'];
+            foreach ($data['expenseEntries'] as $expense) {
+                $rows[] = [$expense->expense_date->format('d M Y'), $expense->merchant, $expense->description, $expense->category, DocumentTotals::scaled($expense->amount)];
+            }
+            $rows[] = ['Total expenses', '', $data['expenseTotal']];
         }
         $namespace = 'http://schemas.openxmlformats.org/';
         $relationships = $namespace.'package/2006/relationships';

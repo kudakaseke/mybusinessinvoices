@@ -15,10 +15,9 @@ test('calendar groups documents payments and expenses on their recorded dates', 
     $expense = Expense::factory()->for($user)->create(['expense_date' => '2026-10-09', 'merchant' => 'Calendar supplier']);
 
     $response = $this->actingAs($user)->get('/calendar?month=2026-10')->assertOk()
-        ->assertSee('CAL-INV')->assertSee('CAL-QUO')->assertSee('Received payment')->assertSee('Calendar supplier')
-        ->assertSee(route('documents.show', ['invoices', $invoice->id]))
-        ->assertSee(route('documents.show', ['quotations', $quotation->id]))
-        ->assertSee(route('records.edit', ['expenses', $expense->id]));
+        ->assertSee('Total Invoice:')->assertSee('Total Quotations:')->assertSee('Total Payments Received:')->assertSee('Total Expenses:')
+        ->assertSee(route('statements', ['from' => '2026-10-05', 'to' => '2026-10-05', 'currency' => $invoice->currency]))
+        ->assertDontSee('CAL-INV')->assertDontSee('CAL-QUO');
 
     $events = $response->viewData('events');
     expect($events['2026-10-05']->first()['type'])->toBe('invoices');
@@ -40,8 +39,7 @@ test('calendar excludes other owners records unknown payment dates and activity 
     Invoice::factory()->for($user)->create(['invoice_number' => 'VISIBLE-EDGE', 'issue_date' => '2026-09-28']);
 
     $response = $this->actingAs($user)->get('/calendar?month=2026-10')->assertOk()
-        ->assertDontSee('PRIVATE-INVOICE')->assertDontSee('PRIVATE-QUOTE')->assertDontSee('Private supplier')
-        ->assertSee('VISIBLE-EDGE');
+        ->assertDontSee('PRIVATE-INVOICE')->assertDontSee('PRIVATE-QUOTE')->assertDontSee('Private supplier');
 
     $events = $response->viewData('events')->flatten(1);
     expect($events)->toHaveCount(2);

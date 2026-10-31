@@ -40,5 +40,14 @@
                 </tbody>
             </table>
         </div>
+        @unless($client)
+        <section class="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-[#10261c]">
+            <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-xl font-semibold">Business expenses</h2><p class="mt-1 text-sm font-semibold text-red-600 dark:text-red-400">Total expenses: {{ $currency }} {{ number_format($expenseTotal / 100, 2) }}</p></div><flux:button :href="route('records.create', 'expenses')" wire:navigate>Add expense</flux:button></div>
+            <div class="overflow-x-auto"><table class="w-full min-w-[650px] text-left text-sm"><thead><tr><th class="pb-4">Date</th><th>Merchant</th><th>Category</th><th>Description</th><th class="text-right">Expense ({{ $currency }})</th></tr></thead><tbody>
+                @forelse($expenseEntries as $expense)<tr class="border-t border-zinc-200 dark:border-zinc-700"><td class="py-4">{{ $expense->expense_date->format('d M Y') }}</td><td>{{ $expense->merchant }}</td><td>{{ $expense->category }}</td><td><a class="underline" href="{{ route('records.edit', ['expenses', $expense->id]) }}" wire:navigate>{{ $expense->description }}</a></td><td class="text-right text-red-600 dark:text-red-400">{{ number_format($expense->amount, 2) }}</td></tr>
+                @empty<tr><td colspan="5" class="py-6 text-zinc-500">No expenses for this currency and date range.</td></tr>@endforelse
+            </tbody></table></div>
+        </section>
+        @endunless
     </div>
 </x-layouts.app>

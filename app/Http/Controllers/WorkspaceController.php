@@ -10,11 +10,14 @@ use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\Product;
 use App\Models\Quotation;
+use App\Models\User;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -76,8 +79,16 @@ class WorkspaceController extends Controller
             ]);
         }
         $events = $events->groupBy('date');
+        $dailyTotals = $events->map(fn ($dayEvents) => $dayEvents->groupBy('currency')->map(fn ($records, string $currency): array => [
+            'currency' => $currency,
+            'invoiced' => $records->where('type', 'invoices')->sum(fn (array $event): int => DocumentTotals::scaled($event['amount'])),
+            'received' => $records->where('type', 'payments')->sum(fn (array $event): int => DocumentTotals::scaled($event['amount'])),
+            'expenses' => $records->where('type', 'expenses')->sum(fn (array $event): int => DocumentTotals::scaled($event['amount'])),
+            'credited' => $records->where('type', 'credit-notes')->sum(fn (array $event): int => DocumentTotals::scaled($event['amount'])),
+            'quoted' => $records->where('type', 'quotations')->sum(fn (array $event): int => DocumentTotals::scaled($event['amount'])),
+        ])->values());
 
-        return view('calendar', compact('month', 'start', 'end', 'events'));
+        return view('calendar', compact('month', 'start', 'end', 'events', 'dailyTotals'));
     }
 
     public function overview(Request $request): View
@@ -105,7 +116,7 @@ class WorkspaceController extends Controller
         return view('dashboard', compact('title', 'totals', 'expenses', 'monthly', 'categories', 'recent', 'counts', 'activity'));
     }
 
-    /** @return array{currency: string, weeks: array, invoiced: int, received: int, undatedPayments: bool} */
+    /** @return array{currency: string, weeks: array, invoiced: int, received: int, expenses: int, undatedPayments: bool} */
     private function analyticsActivity(Request $request): array
     {
         $data = $request->validate(['currency' => ['nullable', 'in:USD,ZWG']]);
@@ -115,7 +126,7 @@ class WorkspaceController extends Controller
         $weeks = [];
         for ($index = 0; $index < 12; $index++) {
             $week = $start->addWeeks($index);
-            $weeks[$week->toDateString()] = ['date' => $week->toDateString(), 'label' => $week->format('d M'), 'invoiced' => 0, 'received' => 0];
+            $weeks[$week->toDateString()] = ['date' => $week->toDateString(), 'label' => $week->format('d M'), 'invoiced' => 0, 'received' => 0, 'expenses' => 0];
         }
         $invoices = Invoice::where('user_id', $request->user()->id)->where('currency', $currency)
             ->where('issue_date', '>=', $start->toDateString())->where('issue_date', '<', $today->addDay()->toDateString())
@@ -123,7 +134,10 @@ class WorkspaceController extends Controller
         $payments = InvoicePayment::whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
             ->where('paid_on', '>=', $start->toDateString())->where('paid_on', '<', $today->addDay()->toDateString())
             ->selectRaw('SUBSTR(paid_on, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
-        foreach (['invoiced' => $invoices, 'received' => $payments] as $field => $records) {
+        $expenses = Expense::where('user_id', $request->user()->id)->where('currency', $currency)
+            ->where('expense_date', '>=', $start->toDateString())->where('expense_date', '<', $today->addDay()->toDateString())
+            ->selectRaw('SUBSTR(expense_date, 1, 10) AS day, SUM(amount) AS amount')->groupBy('day')->get();
+        foreach (['invoiced' => $invoices, 'received' => $payments, 'expenses' => $expenses] as $field => $records) {
             foreach ($records as $record) {
                 $week = CarbonImmutable::parse($record->day, 'Africa/Johannesburg')->startOfWeek()->toDateString();
                 $weeks[$week][$field] += DocumentTotals::scaled($record->amount);
@@ -132,7 +146,7 @@ class WorkspaceController extends Controller
         $undatedPayments = InvoicePayment::whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id)->where('currency', $currency))
             ->whereNull('paid_on')->exists();
 
-        return ['currency' => $currency, 'weeks' => array_values($weeks), 'invoiced' => array_sum(array_column($weeks, 'invoiced')), 'received' => array_sum(array_column($weeks, 'received')), 'undatedPayments' => $undatedPayments];
+        return ['currency' => $currency, 'weeks' => array_values($weeks), 'invoiced' => array_sum(array_column($weeks, 'invoiced')), 'received' => array_sum(array_column($weeks, 'received')), 'expenses' => array_sum(array_column($weeks, 'expenses')), 'undatedPayments' => $undatedPayments];
     }
 
     private function model(string $kind): string
@@ -188,13 +202,28 @@ class WorkspaceController extends Controller
         };
         $data = $request->validate($rules);
         unset($data['receipt']);
-        if ($request->hasFile('receipt')) {
-            $data['receipt_path'] = $request->file('receipt')->store('receipts/'.$request->user()->id, 'local');
-            $data['receipt_original_name'] = $request->file('receipt')->getClientOriginalName();
-        }
-        $entry->fill($data);
-        $entry->user_id = $request->user()->id;
-        $entry->save();
+        DB::transaction(function () use ($request, $kind, $entry, $data): void {
+            if ($kind === 'expenses') {
+                User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+                $date = CarbonImmutable::parse($data['expense_date'])->toDateString();
+                $duplicate = Expense::where('user_id', $request->user()->id)
+                    ->when($entry->exists, fn ($query) => $query->where('id', '!=', $entry->id))
+                    ->whereDate('expense_date', $date)->where('currency', $data['currency'])->where('amount', $data['amount']);
+                foreach (['merchant', 'description', 'category'] as $field) {
+                    $duplicate->whereRaw('LOWER('.$field.') = ?', [mb_strtolower($data[$field])]);
+                }
+                if ($duplicate->exists()) {
+                    throw ValidationException::withMessages(['description' => 'This expense is already recorded with the same date, merchant, description, category, amount and currency. Check your expenses before saving it again.']);
+                }
+            }
+            if ($request->hasFile('receipt')) {
+                $data['receipt_path'] = $request->file('receipt')->store('receipts/'.$request->user()->id, 'local');
+                $data['receipt_original_name'] = $request->file('receipt')->getClientOriginalName();
+            }
+            $entry->fill($data);
+            $entry->user_id = $request->user()->id;
+            $entry->save();
+        });
 
         return redirect()->route('records.index', $kind)->with('message', 'Record saved.');
     }
