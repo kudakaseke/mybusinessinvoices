@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 
 test('settings page is displayed', function (string $page) {
@@ -16,7 +17,6 @@ test('profile information can be updated', function () {
 
     $response = Volt::test('settings.profile')
         ->set('name', 'Test User')
-        ->set('email', 'test@example.com')
         ->call('updateProfileInformation');
 
     $response->assertHasNoErrors();
@@ -24,8 +24,20 @@ test('profile information can be updated', function () {
     $user->refresh();
 
     expect($user->name)->toEqual('Test User');
-    expect($user->email)->toEqual('test@example.com');
-    expect($user->email_verified_at)->toBeNull();
+    expect($user->email_verified_at)->not->toBeNull();
+});
+
+test('profile email cannot be changed through a modified request', function () {
+    $user = User::factory()->create();
+    $originalEmail = $user->email;
+    $verifiedAt = $user->email_verified_at;
+    $this->actingAs($user);
+
+    Volt::test('settings.profile')->set('email', 'changed@example.com')
+        ->call('updateProfileInformation')->assertHasErrors(['email' => 'in']);
+
+    expect($user->fresh()->email)->toBe($originalEmail);
+    expect($user->fresh()->email_verified_at->equalTo($verifiedAt))->toBeTrue();
 });
 
 test('email verification status is unchanged when email address is unchanged', function () {
@@ -44,6 +56,7 @@ test('email verification status is unchanged when email address is unchanged', f
 });
 
 test('user can delete their account', function () {
+    Storage::fake('local');
     $user = User::factory()->create();
 
     $this->actingAs($user);

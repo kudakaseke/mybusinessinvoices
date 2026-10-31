@@ -15,7 +15,7 @@ Route::get('dashboard', [WorkspaceController::class, 'overview'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('credit-notes', [CreditNoteController::class, 'index'])->name('credit-notes.index');
     Route::get('credit-notes/create', [CreditNoteController::class, 'create'])->name('credit-notes.create');
     Route::post('invoices/{record}/credit-notes', [CreditNoteController::class, 'store'])->whereNumber('record')->name('credit-notes.store');
@@ -38,6 +38,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('{kind}/create', [DocumentController::class, 'create'])->where('kind', 'invoices|quotations')->name('documents.create');
     Route::post('{kind}', [DocumentController::class, 'store'])->where('kind', 'invoices|quotations')->name('documents.store');
     Route::post('{kind}/review', [DocumentController::class, 'review'])->where('kind', 'invoices|quotations')->name('documents.review');
+    Route::post('{kind}/resume', [DocumentController::class, 'resume'])->where('kind', 'invoices|quotations')->name('documents.resume');
     Route::patch('invoices/{record}/payment', [DocumentController::class, 'updatePayment'])->whereNumber('record')->name('invoices.payment');
     Route::get('{kind}/{record}/download', [DocumentController::class, 'download'])->where('kind', 'invoices|quotations')->whereNumber('record')->name('documents.download');
     Route::get('{kind}/{record}/edit', [DocumentController::class, 'edit'])->where('kind', 'invoices|quotations')->whereNumber('record')->name('documents.edit');

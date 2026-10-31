@@ -39,6 +39,23 @@ new #[Layout('components.layouts.auth')] class extends Component {
         RateLimiter::clear($this->throttleKey());
         Session::regenerate();
 
+        if (! Auth::user()->hasVerifiedEmail()) {
+            $user = Auth::user();
+            Auth::logout();
+            Session::invalidate();
+            Session::regenerateToken();
+            Session::put('verification.user_id', $user->id);
+            try {
+                $user->sendEmailVerificationNotification();
+            } catch (ValidationException $exception) {
+                Session::flash('status', $exception->validator->errors()->first('code'));
+            }
+            $this->redirect(route('verification.notice', absolute: false), navigate: true);
+
+            return;
+        }
+
+        Session::put('password_hash_web', Auth::guard()->hashPasswordForCookie(Auth::user()->getAuthPassword()));
         $this->redirectIntended(default: route('dashboard', absolute: false), navigate: true);
     }
 

@@ -37,6 +37,7 @@ class DocumentController extends Controller
 
     public function index(Request $request, string $kind): View
     {
+        $request->validate(['search' => ['nullable', 'string', 'max:255']]);
         $number = $kind === 'invoices' ? 'invoice_number' : 'quotation_number';
         $records = $this->model($kind)::where('user_id', $request->user()->id)
             ->when($request->filled('search'), fn ($query) => $query->where(function ($query) use ($request, $number) {
@@ -51,12 +52,17 @@ class DocumentController extends Controller
         $model = $this->model($kind);
         $user = $request->user();
         $number = $kind === 'invoices' ? 'invoice_number' : 'quotation_number';
-        $last = $model::where('user_id', $user->id)->latest('id')->value($number);
-        $next = $last && preg_match('/^(.*?)(\\d+)$/', $last, $match)
-            ? $match[1].str_pad((string) ((int) $match[2] + 1), strlen($match[2]), '0', STR_PAD_LEFT)
-            : ($kind === 'invoices' ? 'INV-' : 'QUO-').str_pad((string) $user->id, 4, '0', STR_PAD_LEFT).'-0001';
+        $today = today('Africa/Johannesburg');
+        $prefix = ($kind === 'invoices' ? 'INV-' : 'QUO-').$today->format('m/y').'-';
+        $highest = 0;
+        foreach ($model::where('user_id', $user->id)->where($number, 'like', $prefix.'%')->pluck($number) as $existing) {
+            if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/D', $existing, $matches)) {
+                $highest = max($highest, (int) $matches[1]);
+            }
+        }
+        $next = $prefix.str_pad((string) ($highest + 1), 3, '0', STR_PAD_LEFT);
         $document = new $model([
-            $number => $next, 'issue_date' => today(), 'due_date' => today(),
+            $number => $next, 'issue_date' => $today, 'due_date' => $today,
             'business_name' => $user->business_name ?? $user->name, 'business_email' => $user->business_email ?? $user->email,
             'business_address' => $user->business_address, 'business_phone' => $user->business_phone,
             'prepared_by' => $user->name, 'currency' => $user->base_currency ?? 'USD',
@@ -103,6 +109,11 @@ class DocumentController extends Controller
         $pdfData = base64_encode($pdf->render($document, $kind));
 
         return view('documents.review', compact('document', 'kind', 'data', 'pdfData'));
+    }
+
+    public function resume(SaveDocumentRequest $request, string $kind): RedirectResponse
+    {
+        return redirect()->route('documents.create', $kind)->withInput($request->validated());
     }
 
     public function download(Request $request, string $kind, int $record, DocumentPdf $pdf): Response

@@ -52,12 +52,12 @@ class StatementController extends Controller
         ]);
         $from = $data['from'] ?? null;
         $to = $data['to'] ?? null;
-        $clients = Invoice::where('user_id', $request->user()->id)->select('customer_email')
-            ->selectRaw('MAX(customer_name) AS customer_name')->groupBy('customer_email')->orderBy('customer_name')->get();
-        $client = $data['client'] ?? null;
+        $clients = Invoice::where('user_id', $request->user()->id)->selectRaw('LOWER(customer_email) AS customer_email')
+            ->selectRaw('MAX(customer_name) AS customer_name')->groupByRaw('LOWER(customer_email)')->orderBy('customer_name')->get();
+        $client = isset($data['client']) ? strtolower($data['client']) : null;
         $currency = $data['currency'] ?? 'USD';
         $invoices = Invoice::where('user_id', $request->user()->id)
-            ->when($client, fn ($query) => $query->where('customer_email', $client))
+            ->when($client, fn ($query) => $query->whereRaw('LOWER(customer_email) = ?', [$client]))
             ->where('currency', $currency)->with(['payments', 'creditNotes'])->orderBy('issue_date')->orderBy('id')->get();
         $entries = collect();
         foreach ($invoices as $invoice) {

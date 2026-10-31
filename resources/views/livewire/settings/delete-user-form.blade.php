@@ -1,7 +1,7 @@
 <?php
 
-use App\Livewire\Actions\Logout;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Livewire\Volt\Component;
 
 new class extends Component {
@@ -10,13 +10,24 @@ new class extends Component {
     /**
      * Delete the currently authenticated user.
      */
-    public function deleteUser(Logout $logout): void
+    public function deleteUser(): void
     {
         $this->validate([
             'password' => ['required', 'string', 'current_password'],
         ]);
 
-        tap(Auth::user(), $logout(...))->delete();
+        $user = Auth::user();
+        try {
+            DB::transaction(fn () => $user->delete());
+        } catch (RuntimeException $exception) {
+            report($exception);
+            $this->addError('password', 'We could not delete your account. Please try again.');
+
+            return;
+        }
+        Auth::guard('web')->logoutCurrentDevice();
+        session()->invalidate();
+        session()->regenerateToken();
 
         $this->redirect('/', navigate: true);
     }

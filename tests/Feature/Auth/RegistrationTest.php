@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\User;
+use App\Notifications\VerifyEmailCode;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
 
 test('registration screen can be rendered', function () {
@@ -9,6 +12,8 @@ test('registration screen can be rendered', function () {
 });
 
 test('new users can register', function () {
+    Notification::fake();
+
     $response = Volt::test('auth.register')
         ->set('name', 'Test User')
         ->set('email', 'test@example.com')
@@ -18,7 +23,11 @@ test('new users can register', function () {
 
     $response
         ->assertHasNoErrors()
-        ->assertRedirect(route('dashboard', absolute: false));
+        ->assertRedirect(route('verification.notice', absolute: false));
 
-    $this->assertAuthenticated();
+    $this->assertGuest();
+    $user = User::where('email', 'test@example.com')->firstOrFail();
+    expect($user->hasVerifiedEmail())->toBeFalse();
+    expect(session('verification.user_id'))->toBe($user->id);
+    Notification::assertSentTo($user, VerifyEmailCode::class, fn ($notification) => preg_match('/^[0-9]{6}$/', $notification->code) === 1);
 });

@@ -49,6 +49,7 @@ new #[Layout('components.layouts.auth')] class extends Component {
                     'remember_token' => Str::random(60),
                 ])->save();
 
+                $user->revokeSessions();
                 event(new PasswordReset($user));
             }
         );

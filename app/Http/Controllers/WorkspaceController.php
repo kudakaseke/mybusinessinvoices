@@ -161,6 +161,7 @@ class WorkspaceController extends Controller
 
     public function index(Request $request, string $kind): View
     {
+        $request->validate(['search' => ['nullable', 'string', 'max:255']]);
         $model = $this->model($kind);
         $field = $kind === 'expenses' ? 'merchant' : 'name';
         $records = $model::where('user_id', $request->user()->id)
@@ -248,7 +249,8 @@ class WorkspaceController extends Controller
             $rules[$field] = ['nullable', 'string', 'max:255'];
         }
         $rules += [
-            'business_address' => ['nullable', 'string', 'max:10000'], 'business_email' => ['nullable', 'email', 'max:255'],
+            'business_address' => ['nullable', 'string', 'max:10000'],
+            'business_email' => ['sometimes', 'required', 'email', 'max:255', Rule::in([$request->user()->business_email ?? $request->user()->email])],
             'website' => ['nullable', 'url', 'max:255'], 'base_currency' => ['required', Rule::in(['USD', 'ZWG'])],
             'target_currency' => ['required', Rule::in(['USD', 'ZWG']), 'different:base_currency'],
             'exchange_rate' => ['required', 'numeric', 'min:0.000001', 'max:99999999.999999', 'decimal:0,6'],
@@ -257,7 +259,11 @@ class WorkspaceController extends Controller
             'default_currencies.*' => ['required', Rule::in(['USD', 'ZWG']), 'distinct'],
         ];
         $data = $request->validate($rules);
-        $data['business_profile_completed_at'] = $request->user()->business_profile_completed_at ?? now();
+        $data['business_email'] = $request->user()->business_email ?? $request->user()->email;
+        $profile = array_replace($request->user()->only('business_name', 'business_email', 'business_phone', 'business_address'), $data);
+        $complete = collect(['business_name', 'business_email', 'business_phone', 'business_address'])
+            ->every(fn (string $field): bool => filled($profile[$field] ?? null));
+        $data['business_profile_completed_at'] = $complete ? ($request->user()->business_profile_completed_at ?? now()) : null;
         if ($data['base_currency'] === 'USD' && $data['target_currency'] === 'ZWG') {
             $data['usd_to_zwg_rate'] = round((float) $data['exchange_rate'], 4);
         } else {

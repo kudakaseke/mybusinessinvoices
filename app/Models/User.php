@@ -2,17 +2,51 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\EmailVerificationCodes;
 use Database\Factories\UserFactory;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-class User extends Authenticatable // implements MustVerifyEmail
+class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    protected static function booted(): void
+    {
+        static::deleting(function (User $user): void {
+            if (! Storage::disk('local')->deleteDirectory('receipts/'.$user->id)) {
+                throw new \RuntimeException('Unable to remove account receipts.');
+            }
+            Password::deleteToken($user);
+            $user->revokeSessions();
+            Cache::forget('email-verification:'.$user->id);
+            RateLimiter::clear('email-verification:'.$user->id.':send');
+            RateLimiter::clear('email-verification:'.$user->id.':attempts');
+        });
+    }
+
+    public function revokeSessions(?string $except = null): void
+    {
+        if (config('session.driver') === 'database') {
+            DB::connection(config('session.connection'))->table(config('session.table', 'sessions'))
+                ->where('user_id', $this->id)
+                ->when($except !== null, fn ($query) => $query->where('id', '!=', $except))->delete();
+        }
+    }
+
+    public function sendEmailVerificationNotification(): void
+    {
+        app(EmailVerificationCodes::class)->send($this);
+    }
 
     /**
      * The attributes that are mass assignable.

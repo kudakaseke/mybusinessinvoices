@@ -25,6 +25,41 @@ test('saved documents show success and sharing choices with separate preparer de
         ->assertSee('Alex Smith');
 })->with(['invoices', 'quotations']);
 
+test('back to edit restores every reviewed line and document detail', function (string $kind) {
+    $user = User::factory()->create();
+    $product = Product::factory()->for($user)->create(['currency' => 'USD']);
+    $data = array_replace(documentPayload($kind), [
+        'items' => [
+            ['product_id' => $product->id, 'description' => 'First saved product', 'quantity' => '2', 'unit_price' => '15.50'],
+            ['product_id' => null, 'description' => 'Second custom line', 'quantity' => '3', 'unit_price' => '7.25'],
+            ['product_id' => null, 'description' => 'Third custom line', 'quantity' => '1', 'unit_price' => '9.00'],
+        ],
+        'prepared_by' => 'Alex Smith', 'payment_bank_name' => 'Test bank',
+    ]);
+    $this->actingAs($user)->post('/'.$kind.'/review', $data)->assertOk()
+        ->assertSee(route('documents.resume', $kind))->assertDontSee('history.back()');
+
+    $response = $this->post('/'.$kind.'/resume', $data)->assertRedirect(route('documents.create', $kind));
+
+    expect(session()->getOldInput('items'))->toBe($data['items']);
+    expect(session()->getOldInput('prepared_by'))->toBe('Alex Smith');
+    expect(session()->getOldInput('payment_bank_name'))->toBe('Test bank');
+    $this->get($response->headers->get('Location'))->assertOk()->assertSee('First saved product')
+        ->assertSee('Second custom line')->assertSee('Third custom line')->assertSee('Alex Smith')->assertSee('Test bank');
+    $this->assertDatabaseCount($kind, 0);
+    $this->assertDatabaseCount('clients', 0);
+
+    $this->post('/'.$kind.'/review', $data)->assertOk();
+    $this->post('/'.$kind, $data)->assertSessionHasNoErrors()->assertRedirect();
+    $document = ($kind === 'invoices' ? Invoice::class : Quotation::class)::firstOrFail();
+    expect($document->items()->orderBy('id')->pluck('description')->all())
+        ->toBe(['First saved product', 'Second custom line', 'Third custom line']);
+})->with(['invoices', 'quotations']);
+
+test('back to edit requires authentication', function () {
+    $this->post('/invoices/resume', documentPayload())->assertRedirect(route('login'));
+});
+
 test('calendar shows the selected month and navigation', function () {
     $this->actingAs(User::factory()->create())->get('/calendar?month=2026-12')
         ->assertOk()->assertSee('December 2026')

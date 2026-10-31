@@ -18,6 +18,7 @@ class CreditNoteController extends Controller
 {
     public function index(Request $request): View
     {
+        $request->validate(['search' => ['nullable', 'string', 'max:255']]);
         $notes = CreditNote::whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id))
             ->when($request->filled('search'), fn ($query) => $query->where(function ($query) use ($request): void {
                 $query->where('number', 'like', '%'.$request->string('search').'%')

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Component;
@@ -29,7 +30,10 @@ new class extends Component {
 
         Auth::user()->update([
             'password' => Hash::make($validated['password']),
+            'remember_token' => Str::random(60),
         ]);
+        Auth::user()->revokeSessions(session()->getId());
+        session()->put('password_hash_web', Auth::guard()->hashPasswordForCookie(Auth::user()->getAuthPassword()));
 
         $this->reset('current_password', 'password', 'password_confirmation');
 
