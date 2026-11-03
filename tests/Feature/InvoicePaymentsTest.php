@@ -69,6 +69,40 @@ test('repeated payment submissions only record one payment', function () {
     expect($invoice->fresh()->status)->toBe('partial');
 });
 
+test('replaying a reversed payment does not restore it or change the balance', function () {
+    $this->travelTo(now()->setDate(2026, 10, 30));
+    $user = User::factory()->create();
+    $invoice = Invoice::factory()->for($user)->create(['total' => '100.00', 'status' => 'outstanding', 'issue_date' => '2026-10-01']);
+    $payload = paymentPayload();
+    $payment = InvoicePayment::factory()->for($invoice)->create([
+        'amount' => $payload['amount'], 'paid_on' => $payload['paid_on'], 'submission_key' => $payload['submission_key'],
+        'voided_on' => '2026-10-25', 'void_reason' => 'Wrong invoice',
+    ]);
+    $payment->delete();
+
+    $this->actingAs($user)->patch('/invoices/'.$invoice->id.'/payment', $payload)
+        ->assertSessionHasNoErrors()->assertRedirect(route('documents.show', ['invoices', $invoice->id]));
+
+    $this->assertDatabaseCount('invoice_payments', 1);
+    $this->assertSoftDeleted($payment);
+    expect($invoice->fresh()->balanceDue())->toBe('100.00');
+});
+
+test('a reversed payment submission key cannot be reused on another invoice', function () {
+    $this->travelTo(now()->setDate(2026, 10, 30));
+    $payload = paymentPayload();
+    $payment = InvoicePayment::factory()->create(['submission_key' => $payload['submission_key']]);
+    $payment->delete();
+    $user = User::factory()->create();
+    $invoice = Invoice::factory()->for($user)->create(['total' => '100.00', 'status' => 'outstanding', 'issue_date' => '2026-10-01']);
+
+    $this->actingAs($user)->patchJson('/invoices/'.$invoice->id.'/payment', $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors('submission_key');
+
+    $this->assertDatabaseCount('invoice_payments', 1);
+    expect($invoice->fresh()->balanceDue())->toBe('100.00');
+});
+
 test('statements show dated charges payments and running balances for one client and currency', function () {
     $user = User::factory()->create();
     $invoice = Invoice::factory()->for($user)->create(['invoice_number' => 'VISIBLE-USD', 'customer_name' => 'Example Client', 'customer_email' => 'client@example.com', 'currency' => 'USD', 'total' => '100.00', 'issue_date' => '2026-10-01', 'status' => 'partial']);
@@ -80,7 +114,7 @@ test('statements show dated charges payments and running balances for one client
     $response = $this->actingAs($user)->get('/statements?client=client@example.com&currency=USD');
 
     $response->assertOk()->assertSee('Example Client')->assertSee('01 Oct 2026')->assertSee('20 Oct 2026')
-        ->assertSee('Invoice charge')->assertSee('Payment received')->assertSee('Still to pay')
+        ->assertSee('Invoice charge')->assertSee('Payment received')->assertSee('Balance due')
         ->assertSee('VISIBLE-USD')->assertDontSee('HIDDEN-ZWG')->assertDontSee('HIDDEN-CLIENT')->assertDontSee('PRIVATE-OTHER-OWNER')
         ->assertViewHas('balance', 7500)->assertViewHas('charged', 10000)->assertViewHas('received', 2500);
     expect($response->viewData('entries')->pluck('balance')->all())->toBe([10000, 7500]);

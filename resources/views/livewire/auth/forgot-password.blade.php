@@ -1,6 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
@@ -16,7 +19,19 @@ new #[Layout('components.layouts.auth')] class extends Component {
             'email' => ['required', 'string', 'email'],
         ]);
 
-        Password::sendResetLink($this->only('email'));
+        session()->forget('status');
+        $this->resetValidation();
+        $key = 'password-recovery:'.hash('sha256', mb_strtolower($this->email).'|'.request()->ip());
+        if (RateLimiter::tooManyAttempts($key, 1)) {
+            throw ValidationException::withMessages(['email' => 'Please wait a minute before requesting another reset link.']);
+        }
+        RateLimiter::hit($key, 60);
+        try {
+            Password::sendResetLink($this->only('email'));
+        } catch (TransportExceptionInterface $exception) {
+            report($exception);
+            throw ValidationException::withMessages(['email' => 'We could not send the reset email. Please wait a minute and try again.']);
+        }
 
         session()->flash('status', __('A reset link will be sent if the account exists.'));
     }

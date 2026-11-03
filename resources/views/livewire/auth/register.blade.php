@@ -25,6 +25,7 @@ new #[Layout('components.layouts.auth')] class extends Component {
             'password' => ['required', 'string', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        $validated['business_name'] = $validated['name'];
         $validated['password'] = Hash::make($validated['password']);
 
         $user = User::create($validated);
@@ -47,9 +48,9 @@ new #[Layout('components.layouts.auth')] class extends Component {
     <x-auth-session-status class="text-center" :status="session('status')" />
 
     <form wire:submit="register" class="flex flex-col gap-6">
-        <!-- Name -->
+        <!-- Business Name -->
         <div class="grid gap-2">
-            <flux:input wire:model="name" id="name" label="{{ __('Name') }}" type="text" name="name" required autofocus autocomplete="name" placeholder="Full name" />
+            <flux:input wire:model="name" id="name" label="{{ __('Business Name') }}" type="text" name="name" required autofocus autocomplete="organization" placeholder="Business name" />
         </div>
 
         <!-- Email Address -->

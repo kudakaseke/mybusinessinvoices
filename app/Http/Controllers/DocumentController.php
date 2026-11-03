@@ -204,10 +204,10 @@ class DocumentController extends Controller
         if ($data['status'] === 'paid') {
             DB::transaction(function () use ($document, $data): void {
                 $invoice = Invoice::whereKey($document->id)->lockForUpdate()->firstOrFail();
-                if ($invoice->payments()->where('submission_key', $data['submission_key'])->exists()) {
+                if ($invoice->payments()->withTrashed()->where('submission_key', $data['submission_key'])->exists()) {
                     return;
                 }
-                if (InvoicePayment::where('submission_key', $data['submission_key'])->exists()) {
+                if (InvoicePayment::withTrashed()->where('submission_key', $data['submission_key'])->exists()) {
                     throw ValidationException::withMessages(['submission_key' => 'Please reload the invoice and try recording this payment again.']);
                 }
                 $amount = DocumentTotals::scaled($data['amount']);

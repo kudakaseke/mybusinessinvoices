@@ -41,6 +41,11 @@ class DocumentPdf
     {
         $lines = explode("\n", wordwrap(str_replace("\r", '', $text), $width, "\n", true));
         foreach ($lines as $line) {
+            if ($y + 14 > 770) {
+                $this->pages[] = $this->content;
+                $this->content = '';
+                $y = 45;
+            }
             $this->text($line, $x, $y, 10, false, $uppercase);
             $y += 14;
         }
@@ -58,25 +63,43 @@ class DocumentPdf
         $number = $invoice ? $document->invoice_number : $document->quotation_number;
         $money = fn (mixed $amount): string => ($document->currency === 'USD' ? '$' : '').number_format((float) $amount, 2);
         $this->text($title, 30, 45, 20, true);
-        $this->block((string) $document->business_name, 420, 43, 22);
+        $this->block(mb_strimwidth((string) $document->business_name, 0, 44, '...'), 420, 43, 22);
         foreach ([[$title.' number', $number], ['Date of issue', $document->issue_date->format('F j, Y')], [$invoice ? 'Date due' : 'Valid until', $document->due_date->format('F j, Y')]] as $index => [$label, $value]) {
             $this->text($label, 30, 76 + $index * 14, 10, $index === 0);
             $this->text($value, 125, 76 + $index * 14);
         }
-        $this->text((string) $document->business_name, 30, 139, 10, true);
-        $businessEnd = $this->block(implode("\n", array_filter([$document->business_address, $document->business_email, $document->business_phone])), 30, 155, 36);
-        $this->text('Bill to', 245, 139, 10, true);
-        $customerEnd = 155;
+        $businessLines = [];
+        foreach (array_filter([$document->business_name, $document->business_address, $document->business_email, $document->business_phone]) as $value) {
+            foreach (explode("\n", wordwrap(str_replace("\r", '', $value), 36, "\n", true)) as $line) {
+                $businessLines[] = $line;
+            }
+        }
+        $customerLines = [['Bill to', true, true]];
         foreach ([
             'customer_name' => 'Customer Name:',
             'customer_address' => 'Customer Physical Address:',
             'customer_phone' => 'Phone number:',
             'customer_email' => 'Customer Email Address:',
         ] as $field => $label) {
-            $this->text($label, 245, $customerEnd, 10, true);
-            $customerEnd = $this->block((string) ($document->$field ?? ''), 245, $customerEnd + 14, 50, $field !== 'customer_email');
+            $customerLines[] = [$label, true, true];
+            foreach (explode("\n", wordwrap(str_replace("\r", '', (string) ($document->$field ?? '')), 50, "\n", true)) as $line) {
+                $customerLines[] = [$line, false, $field !== 'customer_email'];
+            }
         }
-        $this->y = max($businessEnd, $customerEnd) + 24;
+        $this->y = 139;
+        for ($index = 0; $index < max(count($businessLines), count($customerLines)); $index++) {
+            $this->space(14);
+            if (isset($businessLines[$index])) {
+                $this->text($businessLines[$index], 30, $this->y, 10, $index === 0);
+            }
+            if (isset($customerLines[$index])) {
+                [$line, $bold, $uppercase] = $customerLines[$index];
+                $this->text($line, 245, $this->y, 10, $bold, $uppercase);
+            }
+            $this->y += 14;
+        }
+        $this->space(115);
+        $this->y += 24;
         $this->text($money($invoice && $document->exists && $document->status !== 'paid' ? $document->balanceDue() : $document->total).' '.$document->currency.($invoice ? ($document->status === 'paid' ? ' paid' : ' due '.$document->due_date->format('F j, Y')) : ' quoted'), 30, $this->y, 14, true);
         $this->y += 65;
         foreach ([['Description', 30], ['Qty', 420], ['Unit price', 455], ['Amount', 520]] as [$label, $x]) {
@@ -241,6 +264,7 @@ class DocumentPdf
         $this->y = $this->block($invoice->customer_email, 30, $this->y, 80, false);
         $this->y = $this->block($invoice->customer_address ?? '', 30, $this->y, 80);
         $this->y = $this->block('Reason: '.$note->reason, 30, $this->y + 25, 80);
+        $this->space(85);
         $this->text('Credit amount (including tax): '.$invoice->currency.' '.number_format($note->amount, 2), 30, $this->y + 30, 14, true);
         $this->text('This credit reduces the original invoice charge. It is not a cash refund.', 30, $this->y + 55, 9);
         $this->pages[] = $this->content;

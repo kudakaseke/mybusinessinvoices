@@ -64,11 +64,11 @@ new class extends Component {
     }
 }; ?>
 
-<section class="w-full">
-    @include('partials.settings-heading')
+<section class="mx-auto w-full max-w-4xl">
+    @include('partials.settings-heading', ['activeSettingsRoute' => 'settings.profile'])
 
     <x-settings.layout heading="Profile" subheading="Update your name. Your verified email address cannot be changed.">
-        <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
+        <form wire:submit="updateProfileInformation" class="w-full space-y-6">
             <flux:input wire:model="name" label="{{ __('Name') }}" type="text" name="name" required autofocus autocomplete="name" />
 
             <div>

@@ -1,7 +1,7 @@
 <x-layouts.app title="Calendar">
     <div class="mx-auto max-w-5xl">
         <h1 class="mb-3 text-2xl font-semibold">Calendar</h1>
-        <p class="mb-3 text-xs text-zinc-500">Each date shows combined totals by currency. Select a summary to view that day's statement.</p>
+        <p class="mb-3 text-xs text-zinc-500">Each date shows combined totals by currency. @if(auth()->user()->showsFeature('statements'))Select a summary to view that day's statement.@endif</p>
         <section class="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-700 dark:bg-[#10261c]" aria-label="Monthly calendar">
             <div class="flex flex-wrap items-center justify-between gap-3 p-3">
                 <h2 class="text-lg font-semibold">{{ $month->format('F Y') }}</h2>
@@ -21,7 +21,11 @@
                         <time datetime="{{ $day->toDateString() }}" @if($day->toDateString() === now('Africa/Johannesburg')->toDateString()) aria-current="date" @endif @class(['flex size-6 shrink-0 items-center justify-center rounded-full text-xs', 'bg-[#103b26] font-semibold text-white dark:bg-[#cce4ba] dark:text-[#103b26]' => $day->toDateString() === now('Africa/Johannesburg')->toDateString()])>{{ $day->day }}</time>
                         <div class="mt-1 min-h-0 flex-1 space-y-2 overflow-y-auto text-[10px] leading-tight" aria-label="Totals for {{ $day->format('d M Y') }}">
                             @foreach($dailyTotals->get($day->toDateString(), collect()) as $total)
-                                <a class="block space-y-0.5 hover:underline" href="{{ route('statements', ['from' => $day->toDateString(), 'to' => $day->toDateString(), 'currency' => $total['currency']]) }}" wire:navigate>
+                                @if(auth()->user()->showsFeature('statements'))
+                                    <a class="block space-y-0.5 hover:underline" href="{{ route('statements', ['from' => $day->toDateString(), 'to' => $day->toDateString(), 'currency' => $total['currency']]) }}" wire:navigate>
+                                @else
+                                    <div class="block space-y-0.5">
+                                @endif
                                     <span class="block font-semibold">{{ $total['currency'] }}</span>
                                     @foreach(['invoiced' => 'Total Invoice', 'received' => 'Total Payments Received', 'expenses' => 'Total Expenses', 'credited' => 'Total Credit Notes'] as $field => $label)
                                         <span @class(['block', 'text-red-600 dark:text-red-400' => $field === 'expenses'])>{{ $label }}: <strong>{{ number_format($total[$field] / 100, 2) }}</strong></span>
@@ -29,7 +33,7 @@
                                     @if($total['quoted'] > 0)
                                         <span class="block">Total Quotations: <strong>{{ number_format($total['quoted'] / 100, 2) }}</strong></span>
                                     @endif
-                                </a>
+                                @if(auth()->user()->showsFeature('statements'))</a>@else</div>@endif
                             @endforeach
                         </div>
                     </div>

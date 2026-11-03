@@ -19,11 +19,12 @@ test('setup saves business details without requiring a website or WhatsApp numbe
     $this->actingAs($user);
 
     Volt::test('business-setup')->assertSet('business_email', $user->email)
-        ->set('business_name', 'My Studio')->set('business_phone', '+263771234567')
+        ->set('name', 'Tariro')->set('surname', 'Moyo')->set('business_name', 'My Studio')->set('business_phone', '+263771234567')
         ->set('business_address', '10 Main Street, Harare')->call('save')
         ->assertHasNoErrors()->assertRedirect('/dashboard');
 
     $user->refresh();
+    expect($user->name)->toBe('Tariro Moyo');
     expect($user->business_name)->toBe('My Studio');
     expect($user->business_email)->toBe($user->email);
     expect($user->business_phone)->toBe('+263771234567');
@@ -48,7 +49,7 @@ test('required business details must be filled before completing setup', functio
     $this->actingAs($user);
 
     Volt::test('business-setup')->set('business_email', '')->call('save')
-        ->assertHasErrors(['business_name' => 'required', 'business_email' => 'required', 'business_phone' => 'required', 'business_address' => 'required']);
+        ->assertHasErrors(['name' => 'required', 'surname' => 'required', 'business_name' => 'required', 'business_email' => 'required', 'business_phone' => 'required', 'business_address' => 'required']);
 
     expect($user->fresh()->business_profile_completed_at)->toBeNull();
 });
@@ -56,7 +57,7 @@ test('required business details must be filled before completing setup', functio
 test('an optional website must be a valid web address when provided', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
-    $component = Volt::test('business-setup')->set('business_name', 'My Studio')
+    $component = Volt::test('business-setup')->set('name', 'Tariro')->set('surname', 'Moyo')->set('business_name', 'My Studio')
         ->set('business_phone', '0771234567')->set('business_address', 'Harare');
 
     $component->set('website', 'not-a-website')->call('save')->assertHasErrors(['website' => 'url']);
@@ -72,7 +73,7 @@ test('setup updates only the authenticated business', function () {
     $other = User::factory()->create(['business_name' => 'Private Business']);
     $this->actingAs($user);
 
-    Volt::test('business-setup')->set('business_name', 'My Studio')->set('business_phone', '0771234567')
+    Volt::test('business-setup')->set('name', 'Tariro')->set('surname', 'Moyo')->set('business_name', 'My Studio')->set('business_phone', '0771234567')
         ->set('business_address', 'Harare')->call('save')->assertHasNoErrors();
 
     expect($other->fresh()->business_name)->toBe('Private Business');
@@ -90,7 +91,7 @@ test('business setup cannot replace the verified email address', function () {
     $originalEmail = $user->email;
     $this->actingAs($user);
 
-    Volt::test('business-setup')->set('business_name', 'My Studio')->set('business_phone', '0771234567')
+    Volt::test('business-setup')->set('name', 'Tariro')->set('surname', 'Moyo')->set('business_name', 'My Studio')->set('business_phone', '0771234567')
         ->set('business_address', 'Harare')->set('business_email', 'changed@example.com')
         ->call('save')->assertHasErrors(['business_email' => 'in']);
 

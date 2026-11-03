@@ -20,7 +20,9 @@ class DocumentWorkflowController extends Controller
 {
     public function drafts(Request $request): View
     {
-        $drafts = DocumentDraft::where('user_id', $request->user()->id)->latest('updated_at')->paginate(20);
+        $drafts = DocumentDraft::where('user_id', $request->user()->id)
+            ->when(! $request->user()->quotations_enabled, fn ($query) => $query->where('kind', 'invoices'))
+            ->latest('updated_at')->paginate(20);
 
         return view('documents.drafts', compact('drafts'));
     }

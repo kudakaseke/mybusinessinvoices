@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Notifications\AccountDeletionCode;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 
@@ -56,6 +58,7 @@ test('email verification status is unchanged when email address is unchanged', f
 });
 
 test('user can delete their account', function () {
+    Notification::fake();
     Storage::fake('local');
     $user = User::factory()->create();
 
@@ -63,7 +66,10 @@ test('user can delete their account', function () {
 
     $response = Volt::test('settings.delete-user-form')
         ->set('password', 'password')
-        ->call('deleteUser');
+        ->call('sendDeletionCode')->assertHasNoErrors();
+    $code = Notification::sent($user, AccountDeletionCode::class)->sole()->code;
+    Notification::assertSentTo($user, AccountDeletionCode::class);
+    $response->set('code', $code)->call('deleteUser');
 
     $response
         ->assertHasNoErrors()
@@ -80,7 +86,7 @@ test('correct password must be provided to delete account', function () {
 
     $response = Volt::test('settings.delete-user-form')
         ->set('password', 'wrong-password')
-        ->call('deleteUser');
+        ->call('sendDeletionCode');
 
     $response->assertHasErrors(['password']);
 

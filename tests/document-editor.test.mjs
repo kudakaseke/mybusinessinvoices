@@ -80,3 +80,14 @@ test('navigation saves dirty changes before leaving the editor', async () => {
     assert.equal(prevented, true);
     assert.equal(destination, '/invoices');
 });
+
+
+test('returning through browser history allows the document to be reviewed again', async () => {
+    const state = editor();
+    let submissions = 0;
+    const event = { target: { submit() { submissions++; } } };
+    await state.submitReview(event);
+    state.restoreFromHistory({ persisted: true });
+    await state.submitReview(event);
+    assert.equal(submissions, 2);
+});

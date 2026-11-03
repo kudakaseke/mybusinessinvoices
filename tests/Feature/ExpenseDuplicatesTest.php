@@ -2,6 +2,7 @@
 
 use App\Models\Expense;
 use App\Models\User;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -15,7 +16,7 @@ test('repeated expense submissions cannot create a duplicate', function () {
 
     $this->actingAs($user)->post('/expenses', foodExpense())->assertSessionHasNoErrors()->assertRedirect(route('records.index', 'expenses'));
     $this->from('/expenses/create')->post('/expenses', foodExpense())->assertRedirect('/expenses/create')
-        ->assertSessionHasErrors(['description' => 'This expense is already recorded with the same date, merchant, description, category, amount and currency. Check your expenses before saving it again.']);
+        ->assertSessionHasErrors(['description' => 'This expense is already recorded with the same date, expense name, description, category, amount and currency. Check your expenses before saving it again.']);
 
     $this->assertDatabaseCount('expenses', 1);
     $this->assertDatabaseHas('expenses', ['user_id' => $user->id, 'amount' => '5.00']);
@@ -29,6 +30,18 @@ test('duplicate checks ignore text case and equivalent monetary formatting', fun
 
     $this->assertDatabaseCount('expenses', 1);
 });
+
+test('extra whitespace cannot bypass duplicate expense checks', function (string $field, bool $existingHasWhitespace) {
+    $user = User::factory()->create();
+    $details = array_replace(foodExpense(), [$field => 'Office supplies']);
+    $spacedDetails = array_replace($details, [$field => "  Office \t supplies  "]);
+    Expense::factory()->for($user)->create($existingHasWhitespace ? $spacedDetails : $details);
+
+    $this->actingAs($user)->post('/expenses', $existingHasWhitespace ? $details : $spacedDetails)
+        ->assertSessionHasErrors('description');
+
+    $this->assertDatabaseCount('expenses', 1);
+})->with(['merchant', 'description', 'category'])->with([true, false]);
 
 test('distinct expenses are still allowed', function (string $field, string $value) {
     $user = User::factory()->create();
@@ -70,4 +83,16 @@ test('duplicate submissions do not save extra receipt files', function () {
 
     expect(Storage::disk('local')->allFiles())->toBe([]);
     $this->assertDatabaseCount('expenses', 1);
+});
+
+test('a failed receipt upload does not save an expense', function () {
+    $user = User::factory()->create();
+    $disk = Mockery::mock(Filesystem::class);
+    $disk->shouldReceive('putFileAs')->once()->andReturnFalse();
+    Storage::shouldReceive('disk')->once()->with('local')->andReturn($disk);
+
+    $this->actingAs($user)->post('/expenses', foodExpense() + ['receipt' => UploadedFile::fake()->create('food.pdf', 10, 'application/pdf')])
+        ->assertSessionHasErrors(['receipt' => 'The receipt could not be saved. Please try uploading it again.']);
+
+    $this->assertDatabaseCount('expenses', 0);
 });

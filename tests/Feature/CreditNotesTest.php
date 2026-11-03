@@ -73,7 +73,7 @@ test('crediting a paid invoice keeps cash history and exposes client credit with
     expect($invoice->fresh()->balanceDue())->toBe('0.00');
     $this->assertDatabaseCount('invoice_payments', 1);
     $this->get('/invoices/'.$invoice->id)->assertOk()->assertSee('Client credit:')->assertSee('No cash refund has been recorded.');
-    $this->get('/statements?client=client@example.com')->assertOk()->assertViewHas('balance', -2000)->assertViewHas('received', 10000)->assertSee('Client credit');
+    $this->get('/statements?client=client@example.com')->assertOk()->assertViewHas('balance', -2000)->assertViewHas('received', 10000)->assertSee('Balance (client credit)');
     $totals = $this->get('/reports')->assertOk()->viewData('totals')->first();
     expect((float) $totals->outstanding)->toBe(0.0);
     expect((float) $totals->client_credit)->toBe(20.0);

@@ -41,11 +41,11 @@ new class extends Component {
     }
 }; ?>
 
-<section class="w-full">
-    @include('partials.settings-heading')
+<section class="mx-auto w-full max-w-4xl">
+    @include('partials.settings-heading', ['activeSettingsRoute' => 'settings.password'])
 
     <x-settings.layout heading="Update password" subheading="Ensure your account is using a long, random password to stay secure">
-        <form wire:submit="updatePassword" class="mt-6 space-y-6">
+        <form wire:submit="updatePassword" class="space-y-6">
             <flux:input
                 wire:model="current_password"
                 id="update_password_current_passwordpassword"

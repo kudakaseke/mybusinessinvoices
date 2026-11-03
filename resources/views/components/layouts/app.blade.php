@@ -1,4 +1,6 @@
-<x-layouts.app.sidebar>
+@props(['title' => 'mybusinessinvoices'])
+
+<x-layouts.app.sidebar :title="$title">
     <flux:main>
         {{ $slot }}
     </flux:main>

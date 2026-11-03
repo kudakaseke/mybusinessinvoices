@@ -28,7 +28,7 @@ class StatementExcel
         if (! $data['client']) {
             $rows[] = [];
             $rows[] = ['Business expenses'];
-            $rows[] = ['Date', 'Merchant', 'Description', 'Category', 'Expense amount'];
+            $rows[] = ['Date', 'Expense Name', 'Description', 'Category', 'Expense amount'];
             foreach ($data['expenseEntries'] as $expense) {
                 $rows[] = [$expense->expense_date->format('d M Y'), $expense->merchant, $expense->description, $expense->category, DocumentTotals::scaled($expense->amount)];
             }

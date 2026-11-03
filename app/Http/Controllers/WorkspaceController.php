@@ -17,10 +17,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class WorkspaceController extends Controller
 {
@@ -35,6 +37,9 @@ class WorkspaceController extends Controller
         $userId = $request->user()->id;
         $events = collect();
         foreach (['invoices' => Invoice::class, 'quotations' => Quotation::class] as $kind => $model) {
+            if ($kind === 'quotations' && ! $request->user()->quotations_enabled) {
+                continue;
+            }
             $number = $kind === 'invoices' ? 'invoice_number' : 'quotation_number';
             $documents = $model::where('user_id', $userId)->where('issue_date', '>=', $start->toDateString())
                 ->where('issue_date', '<', $end->addDay()->toDateString())->orderBy('id')->get();
@@ -129,6 +134,14 @@ class WorkspaceController extends Controller
             'Clients' => Client::where('user_id', $userId)->count(),
             'Products' => Product::where('user_id', $userId)->count(),
         ];
+        if (! $request->user()->quotations_enabled) {
+            unset($counts['Quotations']);
+        }
+        foreach (['clients' => 'Clients', 'products' => 'Products'] as $feature => $label) {
+            if (! $request->user()->showsFeature($feature)) {
+                unset($counts[$label]);
+            }
+        }
 
         $activity = $title === 'Analytics' ? $this->analyticsActivity($request) : null;
 
@@ -225,35 +238,54 @@ class WorkspaceController extends Controller
             ],
             'expenses' => [
                 'merchant' => ['required', 'string', 'max:255'], 'description' => ['required', 'string', 'max:255'],
-                'category' => ['required', 'string', 'max:255'], 'expense_date' => ['required', 'date'],
+                'category' => ['required', 'string', 'max:255'], 'expense_date' => ['required', 'date_format:Y-m-d'],
                 'currency' => ['required', Rule::in(['USD', 'ZWG'])], 'amount' => ['required', 'numeric', 'min:0.01', 'max:999999999999.99', 'decimal:0,2'],
                 'receipt' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
             ],
         };
         $data = $request->validate($rules);
         unset($data['receipt']);
-        DB::transaction(function () use ($request, $kind, $entry, $data): void {
-            if ($kind === 'expenses') {
-                User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
-                $date = CarbonImmutable::parse($data['expense_date'])->toDateString();
-                $duplicate = Expense::where('user_id', $request->user()->id)
-                    ->when($entry->exists, fn ($query) => $query->where('id', '!=', $entry->id))
-                    ->whereDate('expense_date', $date)->where('currency', $data['currency'])->where('amount', $data['amount']);
-                foreach (['merchant', 'description', 'category'] as $field) {
-                    $duplicate->whereRaw('LOWER('.$field.') = ?', [mb_strtolower($data[$field])]);
+        $previousReceipt = $kind === 'expenses' ? $entry->receipt_path : null;
+        $newReceipt = null;
+        try {
+            DB::transaction(function () use ($request, $kind, $entry, $data, &$newReceipt): void {
+                if ($kind === 'expenses') {
+                    User::whereKey($request->user()->id)->lockForUpdate()->firstOrFail();
+                    $date = CarbonImmutable::parse($data['expense_date'])->toDateString();
+                    $duplicate = Expense::where('user_id', $request->user()->id)
+                        ->when($entry->exists, fn ($query) => $query->where('id', '!=', $entry->id))
+                        ->whereDate('expense_date', $date)->where('currency', $data['currency'])->where('amount', $data['amount'])
+                        ->get(['merchant', 'description', 'category'])
+                        ->contains(fn (Expense $expense): bool => collect(['merchant', 'description', 'category'])
+                            ->every(fn (string $field): bool => mb_strtolower(Str::squish($expense->{$field})) === mb_strtolower(Str::squish($data[$field]))));
+                    if ($duplicate) {
+                        throw ValidationException::withMessages(['description' => 'This expense is already recorded with the same date, expense name, description, category, amount and currency. Check your expenses before saving it again.']);
+                    }
                 }
-                if ($duplicate->exists()) {
-                    throw ValidationException::withMessages(['description' => 'This expense is already recorded with the same date, merchant, description, category, amount and currency. Check your expenses before saving it again.']);
+                if ($request->hasFile('receipt')) {
+                    $data['receipt_path'] = $request->file('receipt')->store('receipts/'.$request->user()->id, 'local');
+                    if ($data['receipt_path'] === false) {
+                        throw ValidationException::withMessages(['receipt' => 'The receipt could not be saved. Please try uploading it again.']);
+                    }
+                    $newReceipt = $data['receipt_path'];
+                    $data['receipt_original_name'] = $request->file('receipt')->getClientOriginalName();
                 }
+                $entry->fill($data);
+                $entry->user_id = $request->user()->id;
+                $entry->save();
+            });
+        } catch (Throwable $exception) {
+            if ($newReceipt) {
+                Storage::disk('local')->delete($newReceipt);
             }
-            if ($request->hasFile('receipt')) {
-                $data['receipt_path'] = $request->file('receipt')->store('receipts/'.$request->user()->id, 'local');
-                $data['receipt_original_name'] = $request->file('receipt')->getClientOriginalName();
-            }
-            $entry->fill($data);
-            $entry->user_id = $request->user()->id;
-            $entry->save();
-        });
+            throw $exception;
+        }
+
+        if ($previousReceipt && $previousReceipt !== $entry->receipt_path
+            && str_starts_with($previousReceipt, 'receipts/'.$request->user()->id.'/')
+            && ! str_contains($previousReceipt, '..')) {
+            Storage::disk('local')->delete($previousReceipt);
+        }
 
         return redirect()->route('records.index', $kind)->with('message', 'Record saved.');
     }
@@ -273,6 +305,7 @@ class WorkspaceController extends Controller
 
     public function updateSettings(Request $request): RedirectResponse
     {
+        $featureKeys = array_diff(array_keys(array_merge(...array_values(User::featureGroups()))), ['quotations']);
         $rules = [];
         foreach (['business_name', 'business_phone', 'whatsapp_number'] as $field) {
             $rules[$field] = ['nullable', 'string', 'max:255'];
@@ -286,14 +319,20 @@ class WorkspaceController extends Controller
             'default_tax_rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
             'default_currencies' => ['required', 'array', 'min:1'],
             'payment_reminders_enabled' => ['sometimes', 'boolean'],
+            'quotations_enabled' => ['sometimes', 'boolean'],
+            'feature_preferences' => ['sometimes', 'array:'.implode(',', $featureKeys)],
+            'feature_preferences.*' => ['boolean'],
             'default_currencies.*' => ['required', Rule::in(['USD', 'ZWG']), 'distinct'],
         ];
         $data = $request->validate($rules);
+        if (isset($data['feature_preferences'])) {
+            $data['feature_preferences'] = array_replace($request->user()->feature_preferences ?? [], array_map(fn (mixed $visible): bool => (bool) $visible, $data['feature_preferences']));
+        }
         $data['business_email'] = $request->user()->business_email ?? $request->user()->email;
         $profile = array_replace($request->user()->only('business_name', 'business_email', 'business_phone', 'business_address'), $data);
         $complete = collect(['business_name', 'business_email', 'business_phone', 'business_address'])
             ->every(fn (string $field): bool => filled($profile[$field] ?? null));
-        $data['business_profile_completed_at'] = $complete ? ($request->user()->business_profile_completed_at ?? now()) : null;
+        $data['business_profile_completed_at'] = $complete ? $request->user()->business_profile_completed_at : null;
         if ($data['base_currency'] === 'USD' && $data['target_currency'] === 'ZWG') {
             $data['usd_to_zwg_rate'] = round((float) $data['exchange_rate'], 4);
         } else {

@@ -20,6 +20,23 @@ class User extends Authenticatable implements MustVerifyEmail
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
 
+    protected $attributes = ['quotations_enabled' => true];
+
+    /** @return array<string, array<string, string>> */
+    public static function featureGroups(): array
+    {
+        return [
+            'Main' => ['analytics' => 'Analytics', 'reports' => 'Reports', 'calendar' => 'Calendar'],
+            'Finance' => ['saved_drafts' => 'Saved drafts', 'quotations' => 'Quotations', 'statements' => 'Statements', 'credit_notes' => 'Credit notes'],
+            'Manage' => ['products' => 'Products', 'clients' => 'Clients'],
+        ];
+    }
+
+    public function showsFeature(string $feature): bool
+    {
+        return $feature === 'quotations' ? $this->quotations_enabled : (bool) ($this->feature_preferences[$feature] ?? true);
+    }
+
     protected static function booted(): void
     {
         static::deleting(function (User $user): void {
@@ -60,7 +77,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'business_name', 'business_address', 'business_email', 'business_phone',
         'whatsapp_number', 'website', 'default_currencies', 'base_currency',
         'target_currency', 'exchange_rate', 'usd_to_zwg_rate', 'default_tax_rate',
-        'business_profile_completed_at', 'payment_reminders_enabled',
+        'business_profile_completed_at', 'payment_reminders_enabled', 'quotations_enabled', 'feature_preferences',
     ];
 
     /**
@@ -83,6 +100,8 @@ class User extends Authenticatable implements MustVerifyEmail
         return [
             'email_verified_at' => 'datetime',
             'payment_reminders_enabled' => 'boolean',
+            'quotations_enabled' => 'boolean',
+            'feature_preferences' => 'array',
             'password' => 'hashed',
             'default_currencies' => 'array',
             'business_profile_completed_at' => 'datetime',

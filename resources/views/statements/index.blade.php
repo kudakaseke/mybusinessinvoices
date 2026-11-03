@@ -22,7 +22,7 @@
             <flux:button type="submit" :formaction="route('statements.excel')">Generate Excel</flux:button>
         </form>
         <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            @foreach(['Invoice charges' => $charged, 'Payments received' => $received, 'Credit notes' => $credited, ($balance < 0 ? 'Client credit' : 'Still to pay') => abs($balance)] as $label => $amount)
+            @foreach(['Invoice charges' => $charged, 'Payments received' => $received, 'Credit notes' => $credited, ($balance < 0 ? 'Balance (client credit)' : 'Balance due') => abs($balance)] as $label => $amount)
                 <div class="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-[#10261c]"><p class="text-sm text-zinc-500">{{ $label }}</p><p class="mt-2 text-2xl font-semibold">{{ $currency }} {{ number_format($amount / 100, 2) }}</p></div>
             @endforeach
         </div>
@@ -31,7 +31,7 @@
         <p class="text-sm text-zinc-500">Refunds and payment reversals appear as negative payments. Payment totals are net of these adjustments.</p>
         <div class="overflow-x-auto rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-[#10261c]">
             <table class="w-full min-w-[700px] text-left text-sm">
-                <thead><tr><th class="pb-4">Date</th><th>Client</th><th>Details</th><th class="text-right">Invoice charge<br><span class="font-normal text-zinc-500">Debit</span></th><th class="text-right">Payment received<br><span class="font-normal text-zinc-500">Credit</span></th><th class="text-right">Credit note</th><th class="text-right">Still to pay<br><span class="font-normal text-zinc-500">Running balance</span></th></tr></thead>
+                <thead><tr><th class="pb-4">Date</th><th>Client</th><th>Details</th><th class="text-right">Invoice charge<br><span class="font-normal text-zinc-500">Debit</span></th><th class="text-right">Payment received<br><span class="font-normal text-zinc-500">Credit</span></th><th class="text-right">Credit note</th><th class="text-right">Balance<br><span class="font-normal text-zinc-500">Running balance</span></th></tr></thead>
                 <tbody>
                     @forelse($entries as $entry)
                         <tr class="border-t border-zinc-200 dark:border-zinc-700"><td class="py-4 pr-3">{{ $entry['date_label'] }}</td><td class="pr-3">{{ $entry['client'] }}</td><td class="max-w-xs pr-3"><a href="{{ route('documents.show', ['invoices', $entry['invoice']->id]) }}" class="underline" wire:navigate>{{ $entry['description'] }}</a></td><td class="text-right">{{ $entry['charged'] ? number_format($entry['charged'] / 100, 2) : '—' }}</td><td class="text-right">{{ $entry['received'] ? number_format($entry['received'] / 100, 2) : '—' }}</td><td class="text-right">{{ $entry['credited'] ? number_format($entry['credited'] / 100, 2) : '—' }}</td><td class="text-right font-semibold">{{ number_format($entry['balance'] / 100, 2) }}</td></tr>
@@ -44,7 +44,7 @@
         @unless($client)
         <section class="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-700 dark:bg-[#10261c]">
             <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-xl font-semibold">Business expenses</h2><p class="mt-1 text-sm font-semibold text-red-600 dark:text-red-400">Total expenses: {{ $currency }} {{ number_format($expenseTotal / 100, 2) }}</p></div><flux:button :href="route('records.create', 'expenses')" wire:navigate>Add expense</flux:button></div>
-            <div class="overflow-x-auto"><table class="w-full min-w-[650px] text-left text-sm"><thead><tr><th class="pb-4">Date</th><th>Merchant</th><th>Category</th><th>Description</th><th class="text-right">Expense ({{ $currency }})</th></tr></thead><tbody>
+            <div class="overflow-x-auto"><table class="w-full min-w-[650px] text-left text-sm"><thead><tr><th class="pb-4">Date</th><th>Expense Name</th><th>Category</th><th>Description</th><th class="text-right">Expense ({{ $currency }})</th></tr></thead><tbody>
                 @forelse($expenseEntries as $expense)<tr class="border-t border-zinc-200 dark:border-zinc-700"><td class="py-4">{{ $expense->expense_date->format('d M Y') }}</td><td>{{ $expense->merchant }}</td><td>{{ $expense->category }}</td><td><a class="underline" href="{{ route('records.edit', ['expenses', $expense->id]) }}" wire:navigate>{{ $expense->description }}</a></td><td class="text-right text-red-600 dark:text-red-400">{{ number_format($expense->amount, 2) }}</td></tr>
                 @empty<tr><td colspan="5" class="py-6 text-zinc-500">No expenses for this currency and date range.</td></tr>@endforelse
             </tbody></table></div>

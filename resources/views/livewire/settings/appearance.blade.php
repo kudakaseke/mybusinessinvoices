@@ -6,8 +6,8 @@ new class extends Component {
     //
 }; ?>
 
-<div class="flex flex-col items-start">
-    @include('partials.settings-heading')
+<div class="mx-auto w-full max-w-4xl">
+    @include('partials.settings-heading', ['activeSettingsRoute' => 'settings.appearance'])
 
     <x-settings.layout heading="Appearance" subheading="Update your account's appearance settings">
         <flux:radio.group x-data variant="segmented" x-model="$flux.appearance">

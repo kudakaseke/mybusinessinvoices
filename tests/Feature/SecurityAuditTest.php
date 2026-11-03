@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quotation;
 use App\Models\User;
+use App\Notifications\AccountDeletionCode;
 use App\Notifications\VerifyEmailCode;
 use App\Providers\AppServiceProvider;
 use Illuminate\Auth\Notifications\ResetPassword;
@@ -154,6 +155,7 @@ test('security: settings cannot bypass required business setup', function () {
 });
 
 test('security: account deletion removes receipts and password reset tokens', function () {
+    Notification::fake();
     Storage::fake('local');
     $user = User::factory()->create();
     $other = User::factory()->create();
@@ -163,7 +165,10 @@ test('security: account deletion removes receipts and password reset tokens', fu
     Password::createToken($user);
     $this->actingAs($user);
 
-    Volt::test('settings.delete-user-form')->set('password', 'password')->call('deleteUser')->assertHasNoErrors();
+    $component = Volt::test('settings.delete-user-form')->set('password', 'password')->call('sendDeletionCode')->assertHasNoErrors();
+    $code = Notification::sent($user, AccountDeletionCode::class)->sole()->code;
+    Notification::assertSentTo($user, AccountDeletionCode::class);
+    $component->set('code', $code)->call('deleteUser')->assertHasNoErrors();
 
     expect($user->fresh())->toBeNull();
     Storage::disk('local')->assertMissing('receipts/'.$user->id.'/private.pdf');
@@ -172,12 +177,16 @@ test('security: account deletion removes receipts and password reset tokens', fu
 });
 
 test('security: deleted account reset tokens cannot reset a recreated account', function () {
+    Notification::fake();
     Storage::fake('local');
     $user = User::factory()->create();
     $email = $user->email;
     $token = Password::createToken($user);
     $this->actingAs($user);
-    Volt::test('settings.delete-user-form')->set('password', 'password')->call('deleteUser');
+    $component = Volt::test('settings.delete-user-form')->set('password', 'password')->call('sendDeletionCode')->assertHasNoErrors();
+    $code = Notification::sent($user, AccountDeletionCode::class)->sole()->code;
+    Notification::assertSentTo($user, AccountDeletionCode::class);
+    $component->set('code', $code)->call('deleteUser')->assertHasNoErrors();
     $replacement = User::factory()->create(['email' => $email]);
 
     Volt::test('auth.reset-password', ['token' => $token])->set('email', $email)
@@ -188,6 +197,7 @@ test('security: deleted account reset tokens cannot reset a recreated account', 
 });
 
 test('security: receipt cleanup failure keeps the account and reports a friendly error', function () {
+    Notification::fake();
     $user = User::factory()->create();
     Password::createToken($user);
     Storage::shouldReceive('disk')->with('local')->once()->andReturn(
@@ -196,7 +206,10 @@ test('security: receipt cleanup failure keeps the account and reports a friendly
         })
     );
     $this->actingAs($user);
-    Volt::test('settings.delete-user-form')->set('password', 'password')->call('deleteUser')->assertHasErrors(['password']);
+    $component = Volt::test('settings.delete-user-form')->set('password', 'password')->call('sendDeletionCode')->assertHasNoErrors();
+    $code = Notification::sent($user, AccountDeletionCode::class)->sole()->code;
+    Notification::assertSentTo($user, AccountDeletionCode::class);
+    $component->set('code', $code)->call('deleteUser')->assertHasErrors(['password']);
     $this->assertAuthenticatedAs($user);
     $this->assertDatabaseHas('users', ['id' => $user->id]);
     $this->assertDatabaseHas('password_reset_tokens', ['email' => $user->email]);

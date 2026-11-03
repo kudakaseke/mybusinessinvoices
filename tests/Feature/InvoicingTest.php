@@ -270,7 +270,7 @@ test('documents reject invalid amounts and dates without saving', function (stri
     $this->actingAs($user)->post('/invoices', $data)->assertSessionHasErrors($field);
 
     $this->assertDatabaseCount('invoices', 0);
-})->with([['items.0.quantity', 0], ['items.0.unit_price', -1], ['vat_rate', 101], ['discount_rate', 101], ['due_date', '2026-09-30'], ['currency', 'EUR'], ['items.0.quantity', '1.001'], ['customer_email', 'invalid']]);
+})->with([['items.0.quantity', 0], ['items.0.unit_price', -1], ['vat_rate', 101], ['discount_rate', 101], ['due_date', '2026-09-30'], ['currency', 'EUR'], ['items.0.quantity', '1.001'], ['customer_email', 'invalid'], ['issue_date', '10/01/2026'], ['due_date', '10/31/2026']]);
 
 test('document limits fail with validation rather than overflowing', function () {
     $user = User::factory()->create();

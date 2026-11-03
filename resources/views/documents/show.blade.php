@@ -6,7 +6,7 @@
         <button type="button" x-on:click="open=false" aria-label="Close popup" title="Close popup" class="absolute top-3 right-3 flex size-10 items-center justify-center rounded-full text-2xl text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">&times;</button>
         <div class="mx-auto mb-5 flex size-14 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-800" aria-hidden="true">&#10003;</div>
         <h2 id="document-success-heading" class="text-2xl font-semibold">{{ $kind==='invoices'?'Invoice':'Quotation' }} saved successfully!</h2>
-        @if($kind === 'invoices' && session('message') === 'Document saved.')
+        @if($kind === 'invoices' && session('message') === 'Document saved.' && (float) $document->balanceDue() > 0)
         <p class="mt-3 mb-6 text-sm text-zinc-500">Have you received payment for this invoice?</p>
         <div x-data="{ received: false }">
             <div x-show="!received" class="flex flex-wrap justify-center gap-3">
@@ -61,7 +61,7 @@
 </article>
 @if($kind === 'invoices')
 <section class="mt-6 space-y-5 rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-700 dark:bg-[#10261c] print:hidden">
-    <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-xl font-semibold">Payment history</h2><a class="text-sm underline" href="{{ route('statements', ['client' => $document->customer_email, 'currency' => $document->currency]) }}" wire:navigate>View client statement</a></div>
+    <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="text-xl font-semibold">Payment history</h2>@if(auth()->user()->showsFeature('statements'))<a class="text-sm underline" href="{{ route('statements', ['client' => $document->customer_email, 'currency' => $document->currency]) }}" wire:navigate>View client statement</a>@endif</div>
     <p>Received: <strong>{{ $document->currency }} {{ number_format($document->paidAmount(), 2) }}</strong> &middot; Still to pay: <strong>{{ $document->currency }} {{ number_format($document->balanceDue(), 2) }}</strong></p>
     <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr><th class="pb-3">Payment date</th><th>Reference</th><th class="text-right">Amount received ({{ $document->currency }})</th></tr></thead><tbody>
         @forelse($document->paymentHistory as $payment)<tr class="border-t border-zinc-200 dark:border-zinc-700">
@@ -93,7 +93,7 @@
     <p>Credits issued: <strong>{{ $document->currency }} {{ number_format($document->creditedAmount(), 2) }}</strong></p>
     @if((float) $document->customerCredit() > 0)<p class="rounded-lg bg-amber-50 p-4 text-amber-900">Client credit: <strong>{{ $document->currency }} {{ number_format($document->customerCredit(), 2) }}</strong>. This amount is available to refund. @if((float) $document->refundedAmount() === 0.0)No cash refund has been recorded.@endif</p>@endif
     <ul class="space-y-3">@foreach($document->creditNotes as $note)<li><a class="underline" href="{{ route('credit-notes.download', $note->id) }}">{{ $note->number }} · {{ $note->credited_on->format('d M Y') }} · {{ $document->currency }} {{ number_format($note->amount, 2) }} · Download PDF</a><p class="text-sm text-zinc-500">{{ $note->reason }}</p></li>@endforeach</ul>
-    @if((float) $document->creditRemaining() > 0)
+    @if((float) $document->creditRemaining() > 0 && auth()->user()->showsFeature('credit_notes'))
     <details @if($errors->any()) open @endif><summary class="cursor-pointer font-medium">Issue a credit note</summary>
         <x-credit-note-form :document="$document" />
     </details>

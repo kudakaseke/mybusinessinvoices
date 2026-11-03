@@ -8,6 +8,10 @@ new class extends Component
 {
     public bool $showSetup = true;
 
+    public string $name = '';
+
+    public string $surname = '';
+
     public string $business_name = '';
 
     public string $business_email = '';
@@ -34,6 +38,8 @@ new class extends Component
     {
         abort_unless(Auth::user()?->hasVerifiedEmail(), 403);
         $validated = $this->validate([
+            'name' => ['required', 'string', 'max:127'],
+            'surname' => ['required', 'string', 'max:127'],
             'business_name' => ['required', 'string', 'max:255'],
             'business_email' => ['required', 'email', 'max:255', Rule::in([Auth::user()->business_email ?? Auth::user()->email])],
             'business_phone' => ['required', 'string', 'max:255'],
@@ -46,6 +52,8 @@ new class extends Component
         }
 
         $user = Auth::user();
+        $validated['name'] = trim($validated['name']).' '.trim($validated['surname']);
+        unset($validated['surname']);
         $user->fill($validated);
         $user->business_profile_completed_at ??= now();
         $user->save();
@@ -59,17 +67,27 @@ new class extends Component
         <form wire:submit="save" class="space-y-6">
             <div>
                 <flux:heading size="lg">Set up your business</flux:heading>
-                <flux:text class="mt-2">Welcome! Add your business details before getting started. These details will appear on your invoices and quotations.</flux:text>
+                <flux:text class="mt-2">Welcome! Add your personal and business details before getting started. Your business details will appear on your invoices and quotations.</flux:text>
             </div>
-            <flux:input wire:model="business_name" label="Business name" required autocomplete="organization" autofocus />
-            <flux:input wire:model="business_email" label="Business email" type="email" readonly />
-            <flux:input wire:model="business_phone" label="Business phone" type="tel" required autocomplete="tel" />
-            <flux:textarea wire:model="business_address" label="Business address" required autocomplete="street-address" />
-            <div class="grid gap-5 sm:grid-cols-2">
-                <flux:input wire:model="whatsapp_number" label="WhatsApp number (optional)" type="tel" />
-                <flux:input wire:model="website" label="Website (optional)" type="url" placeholder="https://example.com" />
-            </div>
-            <flux:text>You can leave Website and WhatsApp blank and update them later in Settings.</flux:text>
+            <fieldset class="space-y-5">
+                <legend class="mb-3 text-sm font-semibold">Personal info</legend>
+                <div class="grid gap-5 sm:grid-cols-2">
+                    <flux:input wire:model="name" label="Name" required maxlength="127" autocomplete="given-name" autofocus />
+                    <flux:input wire:model="surname" label="Surname" required maxlength="127" autocomplete="family-name" />
+                </div>
+            </fieldset>
+            <fieldset class="space-y-5">
+                <legend class="mb-3 text-sm font-semibold">Business info</legend>
+                <flux:input wire:model="business_name" label="Business name" required autocomplete="organization" />
+                <flux:input wire:model="business_email" label="Business email" type="email" readonly />
+                <flux:input wire:model="business_phone" label="Business phone" type="tel" required autocomplete="tel" />
+                <flux:textarea wire:model="business_address" label="Business address" required autocomplete="street-address" />
+                <div class="grid gap-5 sm:grid-cols-2">
+                    <flux:input wire:model="whatsapp_number" label="WhatsApp number (optional)" type="tel" />
+                    <flux:input wire:model="website" label="Website (optional)" type="url" placeholder="https://example.com" />
+                </div>
+                <flux:text>You can leave Website and WhatsApp blank and update them later in Settings.</flux:text>
+            </fieldset>
             <div class="flex justify-end">
                 <flux:button type="submit" variant="primary" wire:loading.attr="disabled">Save and continue</flux:button>
             </div>

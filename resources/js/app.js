@@ -67,6 +67,9 @@ window.documentEditor = (initial) => ({
         await this.saveDraft();
         if (!this.dirty && !this.saving) window.location.assign(link.href);
     },
+    restoreFromHistory(event) {
+        if (event.persisted) this.submitting = false;
+    },
     destroy() {
         this.submitting = true;
         clearTimeout(this.draftTimer);

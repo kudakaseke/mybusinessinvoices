@@ -24,8 +24,8 @@ class SaveDocumentRequest extends FormRequest
         $rules = [
             'draft_key' => ['nullable', 'uuid'],
             $number => ['required', 'string', 'max:255', Rule::unique($table, $number)->where('user_id', $this->user()->id)->ignore($this->route('record'))],
-            'issue_date' => ['required', 'date'],
-            'due_date' => ['required', 'date', 'after_or_equal:issue_date'],
+            'issue_date' => ['required', 'date_format:Y-m-d'],
+            'due_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:issue_date'],
             'currency' => ['required', Rule::in(['USD', 'ZWG'])],
             'vat_rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
             'discount_rate' => ['required', 'numeric', 'min:0', 'max:100', 'decimal:0,2'],
