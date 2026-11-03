@@ -7,7 +7,7 @@ use App\Models\User;
 use Illuminate\Support\Str;
 
 beforeEach(function () {
-    $this->travelTo(now()->setDate(2026, 10, 30));
+    $this->travelTo(now('Africa/Johannesburg')->setDate(2026, 10, 30)->setTime(12, 0));
 });
 
 function creditPayload(string $amount = '30.00'): array

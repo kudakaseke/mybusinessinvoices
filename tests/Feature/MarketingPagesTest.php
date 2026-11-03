@@ -4,7 +4,7 @@ use App\Models\User;
 
 test('marketing pages load with navigation to home sections', function (string $page, string $heading) {
     $response = $this->get(route($page))->assertOk()
-        ->assertSee('<title>'.ucfirst($page).' | mybusinessinvoices</title>', false)
+        ->assertSee('<title>'.ucfirst($page).' | My Invoice Tracker</title>', false)
         ->assertSee($heading)
         ->assertSee('aria-current="page"', false);
 

@@ -38,7 +38,7 @@ test('partial payments remain on record and a later payment settles the invoice'
 });
 
 test('invalid payments do not alter the balance or create records', function (string $field, mixed $value) {
-    $this->travelTo(now()->setDate(2026, 10, 30));
+    $this->travelTo(now('Africa/Johannesburg')->setDate(2026, 10, 30)->setTime(12, 0));
     $user = User::factory()->create();
     $invoice = Invoice::factory()->for($user)->create(['total' => '100.00', 'status' => 'outstanding', 'issue_date' => '2026-10-01']);
     $payload = paymentPayload();

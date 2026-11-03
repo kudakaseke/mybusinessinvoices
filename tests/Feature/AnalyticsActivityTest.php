@@ -35,7 +35,7 @@ test('analytics charts weekly invoice amounts and actual dated payments separate
 });
 
 test('analytics filters by owner currency and range while including payments on older invoices', function () {
-    $this->travelTo(now()->setDate(2026, 10, 30));
+    $this->travelTo(now('Africa/Johannesburg')->setDate(2026, 10, 30)->setTime(12, 0));
     $user = User::factory()->create();
     $older = Invoice::factory()->for($user)->create(['issue_date' => '2026-07-01', 'currency' => 'USD', 'total' => '100.00']);
     InvoicePayment::factory()->for($older)->create(['paid_on' => '2026-10-30', 'amount' => '25.00']);

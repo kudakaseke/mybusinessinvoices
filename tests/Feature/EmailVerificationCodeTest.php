@@ -159,6 +159,6 @@ test('confirmation emails contain the code and expiry instructions', function ()
 
     $mail = $notification->toMail($user);
 
-    expect($mail->subject)->toBe('Confirm your mybusinessinvoices email');
+    expect($mail->subject)->toBe('Confirm your My Invoice Tracker email');
     expect(implode(' ', $mail->introLines))->toContain('123456')->toContain('10 minutes');
 });

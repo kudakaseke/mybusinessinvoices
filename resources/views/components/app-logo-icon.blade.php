@@ -1,1 +1,1 @@
-<img src="{{ asset('apple-touch-icon.png') }}" alt="" width="180" height="180" {{ $attributes->merge(['class' => 'shrink-0 rounded-xl object-contain']) }} />
+<img src="{{ asset('myit-app-icon.png') }}" alt="" width="180" height="180" {{ $attributes->merge(['class' => 'shrink-0 rounded-xl object-contain']) }} />

@@ -25,7 +25,7 @@ class VerifyEmailCode extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Confirm your mybusinessinvoices email')
+            ->subject('Confirm your My Invoice Tracker email')
             ->line('Enter this six-digit code on the email confirmation page:')
             ->line($this->code)
             ->line('This code expires in 10 minutes. Do not share it with anyone.')

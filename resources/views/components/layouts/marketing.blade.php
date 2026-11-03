@@ -1,4 +1,4 @@
-@props(['title' => 'mybusinessinvoices'])
+@props(['title' => 'My Invoice Tracker'])
 <!DOCTYPE html>
 <html lang="en" class="scroll-smooth motion-reduce:scroll-auto">
 <head>
@@ -7,8 +7,8 @@
 <body class="bg-[#f6f8f3] font-sans text-[#10281d]">
     <div class="border-b border-[#d9e1d4] bg-white text-[#0b2117]">
         <header class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-5 px-6 py-4 lg:px-12">
-            <a href="{{ route('home') }}" class="shrink-0" aria-label="My Business Invoices home">
-                <img src="{{ asset('mybi-logo-white-header.png') }}" alt="My Business Invoices" width="224" height="80" class="h-20 w-56 object-cover" />
+            <a href="{{ route('home') }}" class="shrink-0" aria-label="My Invoice Tracker home">
+                <x-app-logo class="min-h-20" :follow-theme="false" />
             </a>
             <nav class="flex flex-wrap items-center gap-5 text-sm md:gap-8" aria-label="Main navigation">
                 @foreach (['home' => 'Home', 'features' => 'Features', 'pricing' => 'Pricing'] as $page => $label)
@@ -25,7 +25,7 @@
     </div>
     <main>{{ $slot }}</main>
     <footer class="mx-auto flex max-w-7xl flex-wrap justify-between gap-5 border-t border-[#d9e1d4] px-6 py-8 text-xs text-[#667466] lg:px-12">
-        <span>mybusinessinvoices</span>
+        <span>My Invoice Tracker</span>
         <span>Invoices · Payments · Expenses · Reports</span>
     </footer>
 </body>

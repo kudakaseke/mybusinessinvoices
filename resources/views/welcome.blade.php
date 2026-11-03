@@ -1,4 +1,4 @@
-<x-layouts.marketing title="Home | mybusinessinvoices">
+<x-layouts.marketing title="Home | My Invoice Tracker">
     <section class="relative isolate overflow-hidden bg-[#0b2117] text-[#f5f8ef]" aria-labelledby="home-heading">
         <img src="{{ asset('accounting-hero.jpg') }}" alt="" width="1000" height="669" fetchpriority="high" class="absolute inset-0 -z-20 h-full w-full object-cover object-right opacity-80 saturate-75" />
         <div aria-hidden="true" class="absolute inset-0 -z-10" style="background: linear-gradient(90deg, #0b2117 0%, rgba(11, 33, 23, .94) 28%, rgba(11, 33, 23, .68) 58%, rgba(11, 33, 23, .2) 100%), linear-gradient(0deg, #07180f 0%, transparent 45%, rgba(7, 24, 15, .25) 100%);"></div>

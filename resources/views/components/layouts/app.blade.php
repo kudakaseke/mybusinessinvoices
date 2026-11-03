@@ -1,4 +1,4 @@
-@props(['title' => 'mybusinessinvoices'])
+@props(['title' => 'My Invoice Tracker'])
 
 <x-layouts.app.sidebar :title="$title">
     <flux:main>

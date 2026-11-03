@@ -25,7 +25,7 @@ class AccountDeletionCode extends Notification
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Confirm your mybusinessinvoices account deletion')
+            ->subject('Confirm your My Invoice Tracker account deletion')
             ->line('You requested to permanently delete your account and its business records.')
             ->line('Enter this six-digit code in the account deletion window to confirm:')
             ->line($this->code)
