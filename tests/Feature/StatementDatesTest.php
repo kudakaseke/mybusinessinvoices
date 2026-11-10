@@ -51,6 +51,17 @@ test('statement date ranges must be valid and ordered', function (string $query,
     $this->actingAs(User::factory()->create())->get('/statements?'.$query)->assertSessionHasErrors($field);
 })->with([['from=invalid', 'from'], ['to=invalid', 'to'], ['from=2026-10-20&to=2026-10-01', 'to']]);
 
+test('historical statements exclude undated payments from invoices issued after the cutoff', function () {
+    $user = User::factory()->create();
+    $invoice = Invoice::factory()->for($user)->create(['issue_date' => '2026-11-01', 'total' => '100.00', 'status' => 'paid']);
+    InvoicePayment::factory()->for($invoice)->create(['paid_on' => null, 'amount' => '100.00']);
+
+    $response = $this->actingAs($user)->get('/statements?to=2026-10-31')->assertOk();
+
+    $response->assertViewHas('balance', 0)->assertViewHas('received', 0);
+    expect($response->viewData('entries'))->toHaveCount(0);
+});
+
 test('payment choices use only outstanding invoices in the selected account and currency', function () {
     $user = User::factory()->create();
     $invoice = Invoice::factory()->for($user)->create(['customer_email' => 'client@example.com', 'currency' => 'USD', 'total' => '100.00', 'status' => 'outstanding']);

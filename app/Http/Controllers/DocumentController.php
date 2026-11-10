@@ -151,7 +151,7 @@ class DocumentController extends Controller
     {
         $data = $request->validated();
         $totals = $calculator->calculate($data['items'], $data['vat_rate'], $data['discount_rate']);
-        DB::transaction(function () use ($document, $data, $totals, $request) {
+        DB::transaction(function () use ($document, $data, $totals, $request, $kind) {
             if (! empty($data['quotation_id'])) {
                 $quote = Quotation::where('user_id', $request->user()->id)->lockForUpdate()->findOrFail($data['quotation_id']);
                 if (Invoice::where('quotation_id', $quote->id)->exists()) {
@@ -169,7 +169,7 @@ class DocumentController extends Controller
             $document->items()->delete();
             $document->items()->createMany($totals['items']);
             if (! empty($data['draft_key'])) {
-                DocumentDraft::where('user_id', $request->user()->id)->where('key', $data['draft_key'])->delete();
+                DocumentDraft::where('user_id', $request->user()->id)->where('kind', $kind)->where('key', $data['draft_key'])->delete();
             }
             Client::where('user_id', $request->user()->id)
                 ->whereRaw('LOWER(email) = ?', [mb_strtolower($data['customer_email'])])->firstOrCreate([], [

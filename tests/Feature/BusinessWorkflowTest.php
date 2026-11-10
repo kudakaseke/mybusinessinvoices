@@ -62,6 +62,24 @@ test('drafts reject foreign access and untrusted fields', function () {
     $this->get('/drafts')->assertDontSee($draft->payload['customer_name']);
 });
 
+test('saving a document preserves drafts of the other document type', function (string $kind, string $draftKind) {
+    $user = User::factory()->create();
+    $draft = DocumentDraft::factory()->create(['user_id' => $user->id, 'kind' => $draftKind]);
+    $payload = workflowPayload() + ['draft_key' => $draft->key];
+    if ($kind === 'quotations') {
+        $payload['quotation_number'] = 'QUO-WORKFLOW-001';
+        unset($payload['invoice_number']);
+    }
+
+    $this->actingAs($user)->post('/'.$kind, $payload)->assertSessionHasNoErrors()->assertRedirect();
+
+    $this->assertDatabaseCount($kind, 1);
+    $this->assertModelExists($draft);
+})->with([
+    'invoice with quotation draft' => ['invoices', 'quotations'],
+    'quotation with invoice draft' => ['quotations', 'invoices'],
+]);
+
 test('quotation conversion preserves items prevents duplicate invoices and retains the quotation', function () {
     $user = User::factory()->create();
     $quote = Quotation::factory()->for($user)->hasItems(2)->create(['prepared_by' => 'Quotation Owner']);

@@ -103,8 +103,8 @@ class StatementController extends Controller
         $paymentInvoices = $invoices->filter(fn (Invoice $invoice): bool => (float) $invoice->balanceDue() > 0)->values();
         $openingBalance = $from ? $entries->filter(fn (array $entry): bool => $entry['date_label'] !== 'Original date unknown' && $entry['date'] < $from)
             ->sum(fn (array $entry): int => $entry['charged'] - $entry['received'] - $entry['credited']) : 0;
-        $entries = $entries->filter(fn (array $entry): bool => $entry['date_label'] === 'Original date unknown'
-            || ((! $from || $entry['date'] >= $from) && (! $to || $entry['date'] <= $to)));
+        $entries = $entries->filter(fn (array $entry): bool => (! $to || $entry['date'] <= $to)
+            && ($entry['date_label'] === 'Original date unknown' || ! $from || $entry['date'] >= $from));
         $balance = $openingBalance;
         $entries = $entries->sortBy([['date', 'asc'], ['order', 'asc']])->values()->map(function (array $entry) use (&$balance): array {
             $balance += $entry['charged'] - $entry['received'] - $entry['credited'];
