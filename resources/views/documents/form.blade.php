@@ -94,7 +94,7 @@ $initial = [
             <summary class="cursor-pointer text-sm font-medium">Payment details (Optional)</summary>
             <div class="mt-5 grid gap-5 sm:grid-cols-2">
                 @foreach(['payment_account_name'=>'Account name','payment_account_number'=>'Account number','payment_bank_name'=>'Bank name'] as $field=>$label)<flux:input :name="$field" :label="$label" :value="old($field,$document->$field)" />@endforeach
-                <flux:select name="payment_account_currency" label="Account currency"><option value="">Not specified</option>@foreach(['USD','ZWG'] as $accountCurrency)<option value="{{ $accountCurrency }}" @selected(old('payment_account_currency',$document->payment_account_currency)===$accountCurrency)>{{ $accountCurrency }}</option>@endforeach</flux:select>
+                <flux:input label="Account currency" x-bind:value="currency" readonly />
             </div>
         </details>
         @if($kind==='quotations')<div x-bind:inert="reviewing" class="mt-6"><flux:textarea name="notes" label="Notes (Optional)">{{ old('notes',$document->notes) }}</flux:textarea></div>@endif

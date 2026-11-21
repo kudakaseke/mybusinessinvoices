@@ -10,6 +10,21 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+test('payment account currency follows the document currency in review and saved documents', function (string $kind, string $currency, string $otherCurrency) {
+    $user = User::factory()->create();
+    $data = array_replace(documentPayload($kind), [
+        'currency' => $currency,
+        'payment_bank_name' => 'Test bank',
+        'payment_account_currency' => $otherCurrency,
+    ]);
+
+    $this->actingAs($user)->post('/'.$kind.'/review', $data)
+        ->assertOk()->assertViewHas('document', fn ($document) => $document->payment_account_currency === $currency);
+    $this->post('/'.$kind, $data)->assertSessionHasNoErrors()->assertRedirect();
+
+    $this->assertDatabaseHas($kind, ['user_id' => $user->id, 'currency' => $currency, 'payment_account_currency' => $currency]);
+})->with([['invoices', 'USD', 'ZWG'], ['invoices', 'ZWG', 'USD'], ['quotations', 'USD', 'ZWG'], ['quotations', 'ZWG', 'USD']]);
+
 test('saved documents show success and sharing choices with separate preparer details', function (string $kind) {
     $user = User::factory()->create();
     $data = documentPayload($kind) + ['prepared_by' => 'Alex Smith'];

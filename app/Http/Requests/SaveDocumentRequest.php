@@ -7,6 +7,13 @@ use Illuminate\Validation\Rule;
 
 class SaveDocumentRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        $hasPaymentDetails = $this->filled('payment_account_name') || $this->filled('payment_account_number') || $this->filled('payment_bank_name');
+
+        $this->merge(['payment_account_currency' => $hasPaymentDetails ? $this->input('currency') : null]);
+    }
+
     protected function getRedirectUrl(): string
     {
         return route('documents.create', ['kind' => $this->route('kind')]);
