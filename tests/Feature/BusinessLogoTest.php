@@ -3,6 +3,7 @@
 use App\Models\Invoice;
 use App\Models\Quotation;
 use App\Models\User;
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
@@ -55,3 +56,32 @@ test('document downloads embed the logo and fall back to the business name', fun
     $user->update(['business_logo_path' => logoUpload()->store('business-logos/'.$user->id, 'local')]);
     $this->get('/'.$kind.'/'.$document->id.'/download')->assertOk()->assertSee('/Subtype /Image', false)->assertSee('/Logo Do', false);
 })->with([['invoices', Invoice::class], ['quotations', Quotation::class]]);
+
+test('a failed logo replacement keeps the existing logo', function () {
+    Storage::fake('local');
+    $user = User::factory()->create();
+    $original = 'business-logos/'.$user->id.'/original.jpg';
+    Storage::disk('local')->put($original, 'original logo');
+    $user->update(['business_logo_path' => $original]);
+    Storage::partialMock()->shouldReceive('disk')->with('local')->andReturnUsing(function () {
+        $disk = Mockery::mock(Filesystem::class);
+        $disk->shouldReceive('putFileAs')->andReturn(false);
+
+        return $disk;
+    });
+    $this->actingAs($user)->put('/settings', logoSettings($user) + ['business_logo' => logoUpload()])->assertSessionHasErrors('business_logo');
+    expect($user->fresh()->business_logo_path)->toBe($original);
+});
+
+test('setup reports a logo storage failure without completing the profile', function () {
+    Storage::fake('local');
+    $user = User::factory()->create();
+    $this->actingAs($user);
+    $setup = Volt::test('business-setup')->set('name', 'Jane')->set('surname', 'Doe')->set('business_name', 'Studio')
+        ->set('business_phone', '123456')->set('business_address', 'Harare')->set('business_logo', logoUpload());
+    $disk = Mockery::mock(Storage::disk('local'))->makePartial();
+    $disk->shouldReceive('put')->andReturn(false);
+    Storage::set('local', $disk);
+    $setup->call('save')->assertHasErrors('business_logo');
+    expect($user->fresh()->business_profile_completed_at)->toBeNull();
+});

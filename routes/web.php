@@ -17,6 +17,10 @@ Route::get('/', function () {
 Route::view('features', 'features')->name('features');
 Route::view('pricing', 'pricing')->name('pricing');
 
+Route::get('sitemap.xml', function () {
+    return response()->view('sitemap', [], 200, ['Content-Type' => 'application/xml']);
+})->name('sitemap');
+
 Route::get('dashboard', [WorkspaceController::class, 'overview'])
     ->middleware(['auth', 'verified'])
     ->name('dashboard');
@@ -30,6 +34,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('{kind}/{record}/email', [DocumentWorkflowController::class, 'email'])->where('kind', 'invoices|quotations')->whereNumber('record')->middleware('throttle:outgoing-mail')->name('documents.email');
     Route::post('invoices/{record}/remind', [DocumentWorkflowController::class, 'remind'])->whereNumber('record')->middleware('throttle:outgoing-mail')->name('invoices.remind');
     Route::get('receipts', [PaymentWorkflowController::class, 'index'])->name('receipts.index');
+    Route::get('receipts/{record}', [PaymentWorkflowController::class, 'show'])->whereNumber('record')->name('receipts.show');
+    Route::post('receipts/{record}/email', [PaymentWorkflowController::class, 'email'])->whereNumber('record')->middleware('throttle:outgoing-mail')->name('receipts.email');
     Route::post('invoices/{record}/payments/{payment}/void', [PaymentWorkflowController::class, 'void'])->whereNumber(['record', 'payment'])->name('payments.void');
     Route::get('invoices/{record}/payments/{payment}/receipt', [PaymentWorkflowController::class, 'receipt'])->whereNumber(['record', 'payment'])->name('payments.receipt');
     Route::post('invoices/{record}/refunds', [PaymentWorkflowController::class, 'refund'])->whereNumber('record')->name('invoices.refunds');
@@ -37,6 +43,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('credit-notes/create', [CreditNoteController::class, 'create'])->name('credit-notes.create');
     Route::post('invoices/{record}/credit-notes', [CreditNoteController::class, 'store'])->whereNumber('record')->name('credit-notes.store');
     Route::get('credit-notes/{note}/download', [CreditNoteController::class, 'download'])->whereNumber('note')->name('credit-notes.download');
+    Route::get('outstanding-balances', [WorkspaceController::class, 'outstandingBalances'])->name('outstanding-balances');
+    Route::get('outstanding-balances/record-payment', [WorkspaceController::class, 'selectOutstandingPayment'])->name('outstanding-balances.record-payment');
     Route::get('analytics', [WorkspaceController::class, 'overview'])->name('analytics');
     Route::get('reports', [WorkspaceController::class, 'overview'])->name('reports');
     Route::get('calendar', [WorkspaceController::class, 'calendar'])->name('calendar');

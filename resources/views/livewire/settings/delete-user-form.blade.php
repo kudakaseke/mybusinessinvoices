@@ -1,9 +1,9 @@
 <?php
 
+use App\AccountDeletion;
 use App\AccountDeletionCodes;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\Locked;
 use Livewire\Volt\Component;
 
@@ -56,7 +56,7 @@ new class extends Component {
         $this->validate(['code' => ['required', 'string', 'regex:/^[0-9]{6}$/']]);
         app(AccountDeletionCodes::class)->verify($user, session()->getId(), $this->code);
         try {
-            DB::transaction(fn () => $user->delete());
+            app(AccountDeletion::class)->delete($user);
         } catch (RuntimeException $exception) {
             report($exception);
             $this->reset('password', 'code', 'codeSent');

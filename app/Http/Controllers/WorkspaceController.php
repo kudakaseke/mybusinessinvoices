@@ -115,6 +115,48 @@ class WorkspaceController extends Controller
         return view('calendar', compact('month', 'start', 'end', 'events', 'dailyTotals'));
     }
 
+    public function outstandingBalances(Request $request): View
+    {
+        $outstanding = collect();
+        Invoice::where('user_id', $request->user()->id)
+            ->with(['payments', 'paymentHistory', 'creditNotes', 'refunds'])
+            ->chunkById(200, function ($invoices) use ($outstanding): void {
+                foreach ($invoices as $invoice) {
+                    $balance = DocumentTotals::scaled($invoice->balanceDue());
+                    if ($balance > 0) {
+                        $overdue = $invoice->isOverdue();
+                        $invoice->unsetRelations();
+                        $outstanding->push(['invoice' => $invoice, 'balance' => $balance, 'overdue' => $overdue]);
+                    }
+                }
+            });
+
+        $customers = $outstanding->groupBy(fn (array $entry): string => (filled($entry['invoice']->customer_email) ? mb_strtolower(trim($entry['invoice']->customer_email)) : 'invoice-'.$entry['invoice']->id).'|'.$entry['invoice']->currency)
+            ->map(function ($entries): array {
+                $entries = $entries->sortByDesc(fn (array $entry): string => $entry['invoice']->issue_date->format('Y-m-d').sprintf('%020d', $entry['invoice']->id))->values();
+                $invoice = $entries->first()['invoice'];
+
+                return ['name' => $invoice->customer_name, 'email' => $invoice->customer_email, 'phone' => $invoice->customer_phone,
+                    'currency' => $invoice->currency, 'balance' => $entries->sum('balance'), 'invoices' => $entries,
+                    'latest' => $invoice->issue_date->format('Y-m-d').sprintf('%020d', $invoice->id)];
+            })->sortByDesc('latest')->values();
+        $totals = $outstanding->groupBy(fn (array $entry): string => $entry['invoice']->currency)
+            ->map(fn ($entries): int => $entries->sum('balance'))->sortKeys();
+
+        return view('outstanding-balances', compact('customers', 'totals'));
+    }
+
+    public function selectOutstandingPayment(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['invoice_id' => ['required', 'integer', 'min:1']]);
+        $invoice = Invoice::where('user_id', $request->user()->id)->findOrFail($data['invoice_id']);
+        if (DocumentTotals::scaled($invoice->balanceDue()) <= 0) {
+            return redirect()->route('outstanding-balances')->withErrors(['invoice_id' => 'This invoice no longer has an outstanding balance.']);
+        }
+
+        return redirect()->route('documents.show', ['invoices', $invoice->id, 'record_payment' => 1]);
+    }
+
     public function overview(Request $request): View
     {
         $userId = $request->user()->id;
@@ -144,8 +186,11 @@ class WorkspaceController extends Controller
         }
 
         $activity = $title === 'Analytics' ? $this->analyticsActivity($request) : null;
+        $dashboardTotals = collect(['USD', 'ZWG'])->map(fn (string $currency) => $totals->firstWhere('currency', $currency) ?? (object) [
+            'currency' => $currency, 'billed' => 0, 'paid' => 0, 'outstanding' => 0, 'credited' => 0, 'client_credit' => 0,
+        ]);
 
-        return view('dashboard', compact('title', 'totals', 'expenses', 'monthly', 'categories', 'recent', 'counts', 'activity'));
+        return view('dashboard', compact('title', 'totals', 'dashboardTotals', 'expenses', 'monthly', 'categories', 'recent', 'counts', 'activity'));
     }
 
     /** @return array{currency: string, weeks: array, invoiced: int, received: int, expenses: int, undatedPayments: bool} */
@@ -343,6 +388,9 @@ class WorkspaceController extends Controller
         $oldLogo = $request->user()->business_logo_path;
         if ($request->hasFile('business_logo')) {
             $data['business_logo_path'] = $request->file('business_logo')->store('business-logos/'.$request->user()->id, 'local');
+            if ($data['business_logo_path'] === false) {
+                throw ValidationException::withMessages(['business_logo' => 'The logo could not be saved. Please try uploading it again.']);
+            }
         } elseif ($request->boolean('remove_business_logo')) {
             $data['business_logo_path'] = null;
         }

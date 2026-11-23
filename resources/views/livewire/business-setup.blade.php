@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
@@ -59,7 +61,11 @@ new class extends Component
 
         $user = Auth::user();
         if ($this->business_logo) {
-            $validated['business_logo_path'] = $this->business_logo->store('business-logos/'.$user->id, 'local');
+            $logoPath = 'business-logos/'.$user->id.'/'.$this->business_logo->hashName();
+            if (! Storage::disk('local')->put($logoPath, $this->business_logo->get())) {
+                throw ValidationException::withMessages(['business_logo' => 'The logo could not be saved. Please try uploading it again.']);
+            }
+            $validated['business_logo_path'] = $logoPath;
         }
         unset($validated['business_logo']);
         $validated['name'] = trim($validated['name']).' '.trim($validated['surname']);

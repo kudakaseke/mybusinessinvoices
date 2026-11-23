@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\DocumentPdf;
 use App\DocumentTotals;
+use App\Mail\BusinessDocumentMail;
 use App\Models\Invoice;
 use App\Models\InvoicePayment;
 use App\Models\InvoiceRefund;
@@ -11,8 +12,10 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Symfony\Component\Mailer\Exception\TransportExceptionInterface;
 
 class PaymentWorkflowController extends Controller
 {
@@ -25,6 +28,41 @@ class PaymentWorkflowController extends Controller
             ->paginate(20);
 
         return view('receipts.index', compact('payments'));
+    }
+
+    public function show(Request $request, int $record, DocumentPdf $pdf): View
+    {
+        $payment = $this->ownedReceipt($request, $record);
+        $pdfData = base64_encode($pdf->renderReceipt($payment));
+
+        return view('receipts.show', compact('payment', 'pdfData'));
+    }
+
+    public function email(Request $request, int $record, DocumentPdf $pdf): RedirectResponse
+    {
+        $payment = $this->ownedReceipt($request, $record);
+        $invoice = $payment->invoice;
+        if (! filter_var($invoice->customer_email, FILTER_VALIDATE_EMAIL)) {
+            throw ValidationException::withMessages(['email' => 'This receipt does not have a valid customer email address.']);
+        }
+
+        try {
+            Mail::to($invoice->customer_email)->send(new BusinessDocumentMail(
+                'Receipt', 'RCT-'.$payment->id, $invoice->business_name, $invoice->customer_name, $invoice->currency,
+                (string) $payment->amount, $pdf->renderReceipt($payment), 'Receipt-'.$payment->id.'.pdf',
+            ));
+        } catch (TransportExceptionInterface $exception) {
+            report($exception);
+            throw ValidationException::withMessages(['email' => 'The email could not be sent. Please try again later.']);
+        }
+
+        return back()->with('message', 'Receipt emailed to '.$invoice->customer_email.' with the PDF attached.');
+    }
+
+    private function ownedReceipt(Request $request, int $record): InvoicePayment
+    {
+        return InvoicePayment::query()->whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id))
+            ->with('invoice.user')->findOrFail($record);
     }
 
     public function void(Request $request, int $record, string $payment): RedirectResponse

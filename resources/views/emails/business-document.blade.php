@@ -4,7 +4,7 @@
     <p>Hello {{ $client }},</p>
     <p>{{ $reminder ? 'This is a friendly reminder about your overdue invoice.' : 'Please find your '.$documentLabel.' attached as a PDF.' }}</p>
     <p>{{ $documentLabel }}: <strong>{{ $number }}</strong></p>
-    <p>{{ $documentLabel === 'Invoice' ? 'Remaining balance' : 'Quoted total' }}: <strong>{{ $currency }} {{ number_format((float) $amount, 2) }}</strong></p>
-    <p>If you have already arranged payment, please contact {{ $business }} to reconcile your account.</p>
+    <p>{{ $documentLabel === 'Receipt' ? 'Amount received' : ($documentLabel === 'Invoice' ? 'Remaining balance' : 'Quoted total') }}: <strong>{{ $currency }} {{ number_format((float) $amount, 2) }}</strong></p>
+    @if($documentLabel !== 'Receipt')<p>If you have already arranged payment, please contact {{ $business }} to reconcile your account.</p>@endif
     <p>Thank you,<br>{{ $business }}</p>
 </body></html>

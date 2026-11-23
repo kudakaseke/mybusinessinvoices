@@ -12,6 +12,7 @@
 .env.backup
 .env.production
 .env.*
+!.env.example
 /.codex/
 /*.log
 /database/*.sqlite

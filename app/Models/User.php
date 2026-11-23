@@ -43,7 +43,9 @@ class User extends Authenticatable implements MustVerifyEmail
             if (! Storage::disk('local')->deleteDirectory('receipts/'.$user->id)) {
                 throw new \RuntimeException('Unable to remove account receipts.');
             }
-            Storage::disk('local')->deleteDirectory('business-logos/'.$user->id);
+            if (! Storage::disk('local')->deleteDirectory('business-logos/'.$user->id)) {
+                throw new \RuntimeException('Unable to remove account logo.');
+            }
             Password::deleteToken($user);
             $user->revokeSessions();
             Cache::forget('email-verification:'.$user->id);

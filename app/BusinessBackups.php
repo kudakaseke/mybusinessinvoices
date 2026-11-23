@@ -35,17 +35,18 @@ class BusinessBackups
             DB::connection()->unprepared('VACUUM INTO '.DB::connection()->getPdo()->quote($path.'/'.$database));
         }
         $checksums = [$database => hash_file('sha256', $path.'/'.$database)];
-        foreach (Storage::disk('local')->allFiles('receipts') as $file) {
-            if (! preg_match('#^receipts/[A-Za-z0-9_./-]+$#D', $file) || str_contains($file, '..') || is_link(Storage::disk('local')->path($file))) {
-                throw new RuntimeException('An unsafe receipt path was found.');
+        $files = array_merge(Storage::disk('local')->allFiles('receipts'), Storage::disk('local')->allFiles('business-logos'));
+        foreach ($files as $file) {
+            if (! preg_match('#^(receipts|business-logos)/[A-Za-z0-9_./-]+$#D', $file) || str_contains($file, '..') || is_link(Storage::disk('local')->path($file))) {
+                throw new RuntimeException('An unsafe backup file path was found.');
             }
             File::ensureDirectoryExists(dirname($path.'/'.$file), 0700);
             if (! File::copy(Storage::disk('local')->path($file), $path.'/'.$file)) {
-                throw new RuntimeException('Unable to back up a receipt.');
+                throw new RuntimeException('Unable to back up a business file.');
             }
             $checksums[$file] = hash_file('sha256', $path.'/'.$file);
         }
-        File::put($path.'/manifest.json', json_encode(['driver' => $driver, 'database' => $database, 'created_at' => now()->toIso8601String(), 'files' => $checksums], JSON_THROW_ON_ERROR));
+        File::put($path.'/manifest.json', json_encode(['driver' => $driver, 'database' => $database, 'created_at' => now()->toIso8601String(), 'includes_business_logos' => true, 'files' => $checksums], JSON_THROW_ON_ERROR));
         foreach (File::allFiles($path) as $file) {
             chmod($file->getPathname(), 0600);
         }
@@ -68,7 +69,7 @@ class BusinessBackups
             }
             foreach ($manifest['files'] as $file => $hash) {
                 $resolved = realpath($path.'/'.$file);
-                if (($file !== $database && ! preg_match('#^receipts/[A-Za-z0-9_./-]+$#D', $file)) || str_contains($file, '..') || $resolved === false || ! str_starts_with($resolved, $path.DIRECTORY_SEPARATOR) || ! is_file($resolved) || is_link($path.'/'.$file) || ! hash_equals($hash, hash_file('sha256', $resolved))) {
+                if (($file !== $database && ! preg_match('#^(receipts|business-logos)/[A-Za-z0-9_./-]+$#D', $file)) || str_contains($file, '..') || $resolved === false || ! str_starts_with($resolved, $path.DIRECTORY_SEPARATOR) || ! is_file($resolved) || is_link($path.'/'.$file) || ! hash_equals($hash, hash_file('sha256', $resolved))) {
                     throw new RuntimeException('Backup validation failed. Nothing was restored.');
                 }
             }
@@ -96,14 +97,17 @@ class BusinessBackups
                 }
                 DB::reconnect();
             }
-            foreach (Storage::disk('local')->allFiles('receipts') as $file) {
-                if (! Storage::disk('local')->delete($file)) {
-                    throw new RuntimeException('Unable to remove a receipt during restore.');
+            $directories = ($manifest['includes_business_logos'] ?? false) === true ? ['receipts', 'business-logos'] : ['receipts'];
+            foreach ($directories as $directory) {
+                foreach (Storage::disk('local')->allFiles($directory) as $file) {
+                    if (! Storage::disk('local')->delete($file)) {
+                        throw new RuntimeException('Unable to remove a business file during restore.');
+                    }
                 }
             }
             foreach ($manifest['files'] as $file => $hash) {
                 if ($file !== $database && ! Storage::disk('local')->put($file, File::get($path.'/'.$file))) {
-                    throw new RuntimeException('Unable to restore a receipt.');
+                    throw new RuntimeException('Unable to restore a business file.');
                 }
             }
             foreach (['sessions', 'password_reset_tokens', 'cache', 'cache_locks'] as $table) {

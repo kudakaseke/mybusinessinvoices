@@ -106,3 +106,37 @@ test('the scheduler includes private backups and opted in reminders', function (
     $commands = collect(app(Schedule::class)->events())->pluck('command')->implode(' ');
     expect($commands)->toContain('business:backup', 'invoices:remind');
 });
+
+test('business logos are backed up and restored with their checksums', function () {
+    withBackupDatabase(function (BusinessBackups $backups): void {
+        Storage::disk('local')->put('business-logos/1/logo.jpg', 'original logo');
+        $name = $backups->create();
+        $manifest = json_decode(File::get(config('business-backups.path').'/'.$name.'/manifest.json'), true);
+        expect($manifest['includes_business_logos'])->toBeTrue();
+        expect($manifest['files']['business-logos/1/logo.jpg'])->toBe(hash('sha256', 'original logo'));
+        Storage::disk('local')->put('business-logos/1/logo.jpg', 'changed logo');
+        Storage::disk('local')->put('business-logos/1/new.jpg', 'later logo');
+        $maintenance = Mockery::mock(MaintenanceMode::class);
+        $maintenance->shouldReceive('active')->andReturnTrue();
+        app()->instance(MaintenanceMode::class, $maintenance);
+        $backups->restore($name);
+        expect(Storage::disk('local')->get('business-logos/1/logo.jpg'))->toBe('original logo');
+        Storage::disk('local')->assertMissing('business-logos/1/new.jpg');
+    });
+});
+
+test('restoring an older backup preserves existing logos', function () {
+    withBackupDatabase(function (BusinessBackups $backups): void {
+        $name = $backups->create();
+        $manifestPath = config('business-backups.path').'/'.$name.'/manifest.json';
+        $manifest = json_decode(File::get($manifestPath), true);
+        unset($manifest['includes_business_logos']);
+        File::put($manifestPath, json_encode($manifest, JSON_THROW_ON_ERROR));
+        Storage::disk('local')->put('business-logos/1/logo.jpg', 'current logo');
+        $maintenance = Mockery::mock(MaintenanceMode::class);
+        $maintenance->shouldReceive('active')->andReturnTrue();
+        app()->instance(MaintenanceMode::class, $maintenance);
+        $backups->restore($name);
+        expect(Storage::disk('local')->get('business-logos/1/logo.jpg'))->toBe('current logo');
+    });
+});

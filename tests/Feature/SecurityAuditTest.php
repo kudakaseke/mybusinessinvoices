@@ -1,5 +1,6 @@
 <?php
 
+use App\AccountDeletion;
 use App\Models\Client;
 use App\Models\CreditNote;
 use App\Models\Expense;
@@ -200,8 +201,9 @@ test('security: receipt cleanup failure keeps the account and reports a friendly
     Notification::fake();
     $user = User::factory()->create();
     Password::createToken($user);
-    Storage::shouldReceive('disk')->with('local')->once()->andReturn(
+    Storage::shouldReceive('disk')->with('local')->twice()->andReturn(
         Mockery::mock(FilesystemAdapter::class, function ($mock): void {
+            $mock->shouldReceive('allFiles')->twice()->andReturn([]);
             $mock->shouldReceive('deleteDirectory')->once()->andReturnFalse();
         })
     );
@@ -381,4 +383,40 @@ test('security: changing a password preserves the current session and rejects it
     $this->get('/dashboard')->assertOk();
     Auth::forgetGuards();
     $this->withSession($oldSession)->get('/dashboard')->assertRedirect(route('login'));
+});
+
+test('security: logo cleanup failure keeps the account and reports an error', function () {
+    Notification::fake();
+    $user = User::factory()->create();
+    Password::createToken($user);
+    Storage::shouldReceive('disk')->with('local')->times(3)->andReturn(
+        Mockery::mock(FilesystemAdapter::class, function ($mock) use ($user): void {
+            $mock->shouldReceive('allFiles')->twice()->andReturn([]);
+            $mock->shouldReceive('deleteDirectory')->with('receipts/'.$user->id)->once()->andReturnTrue();
+            $mock->shouldReceive('deleteDirectory')->with('business-logos/'.$user->id)->once()->andReturnFalse();
+        })
+    );
+    $this->actingAs($user);
+    $component = Volt::test('settings.delete-user-form')->set('password', 'password')->call('sendDeletionCode')->assertHasNoErrors();
+    $code = Notification::sent($user, AccountDeletionCode::class)->sole()->code;
+    $component->set('code', $code)->call('deleteUser')->assertHasErrors(['password']);
+    $this->assertAuthenticatedAs($user);
+    $this->assertDatabaseHas('users', ['id' => $user->id]);
+    $this->assertDatabaseHas('password_reset_tokens', ['email' => $user->email]);
+});
+
+test('account deletion restores receipt and logo files when the database deletion fails', function () {
+    Storage::fake('local');
+    $user = User::factory()->create();
+    $receipt = 'receipts/'.$user->id.'/receipt.pdf';
+    $logo = 'business-logos/'.$user->id.'/logo.jpg';
+    Storage::disk('local')->put($receipt, 'receipt contents');
+    Storage::disk('local')->put($logo, 'logo contents');
+    User::deleting(fn () => throw new RuntimeException('Simulated database failure'));
+
+    expect(fn () => app(AccountDeletion::class)->delete($user))->toThrow(RuntimeException::class, 'Simulated database failure');
+    expect(Storage::disk('local')->get($receipt))->toBe('receipt contents');
+    expect(Storage::disk('local')->get($logo))->toBe('logo contents');
+    $this->assertDatabaseHas('users', ['id' => $user->id]);
+    expect(Storage::disk('local')->allFiles('account-deletion-staging'))->toBeEmpty();
 });

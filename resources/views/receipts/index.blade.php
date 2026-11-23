@@ -16,7 +16,7 @@
                             <td>{{ $payment->invoice->customer_name }}</td>
                             <td><a class="underline" href="{{ route('documents.show', ['invoices', $payment->invoice_id]) }}" wire:navigate>{{ $payment->invoice->invoice_number }}</a></td>
                             <td class="text-right">{{ $payment->invoice->currency }} {{ number_format($payment->amount, 2) }}</td>
-                            <td class="pl-5"><a href="{{ route('payments.receipt', [$payment->invoice_id, $payment->id]) }}">Download PDF</a></td>
+                            <td class="pl-5"><a href="{{ route('receipts.show', $payment->id) }}" wire:navigate>View</a></td>
                         </tr>
                     @empty
                         <tr><td colspan="6" class="py-12 text-center text-zinc-500">No receipts yet. Record a payment on an invoice to create one.</td></tr>

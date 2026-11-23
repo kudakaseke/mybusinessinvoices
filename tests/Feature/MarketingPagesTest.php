@@ -14,7 +14,7 @@ test('marketing pages load with navigation to home sections', function (string $
     }
 })->with([
     ['home', 'Less paperwork.'],
-    ['features', 'Everything has its place.'],
+    ['features', 'Everything you need to stay on top of business.'],
     ['pricing', 'Start free. Grow with Annual.'],
 ]);
 
@@ -33,6 +33,6 @@ test('signed in users can open every public page and return to their dashboard',
 test('home includes the hero features and pricing in scroll order', function () {
     $this->get(route('home'))->assertOk()
         ->assertSeeInOrder(['id="home-heading"', 'id="features"', 'id="pricing"'], false)
-        ->assertSee('Everything has its place.')->assertSee('Start free. Grow with Annual.')
+        ->assertSee('Everything you need to stay on top of business.')->assertSee('Start free. Grow with Annual.')
         ->assertSee('href="#features"', false)->assertSee('Coming soon')->assertSee('$15');
 });
