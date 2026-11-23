@@ -103,7 +103,7 @@ test('owners can record invoice payment without changing invoice contents', func
     $response = $this->actingAs($user)->patch('/invoices/'.$invoice->id.'/payment', ['status' => $status, 'amount' => $status === 'paid' ? $invoice->total : null, 'paid_on' => today('Africa/Johannesburg')->toDateString(), 'submission_key' => (string) Str::uuid(), 'total' => '1.00', 'customer_name' => 'Changed']);
 
     $response->assertRedirect(route('documents.show', ['invoices', $invoice->id]))
-        ->assertSessionHas('message', 'Payment status updated.');
+        ->assertSessionHas('message', $status === 'paid' ? 'Payment recorded. Your receipt is available to download.' : 'Payment status updated.');
     expect($invoice->fresh()->status)->toBe($status);
     expect($invoice->fresh()->total)->toBe($invoice->total);
     expect($invoice->fresh()->customer_name)->toBe($invoice->customer_name);
