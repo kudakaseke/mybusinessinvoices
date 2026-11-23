@@ -43,6 +43,7 @@ class User extends Authenticatable implements MustVerifyEmail
             if (! Storage::disk('local')->deleteDirectory('receipts/'.$user->id)) {
                 throw new \RuntimeException('Unable to remove account receipts.');
             }
+            Storage::disk('local')->deleteDirectory('business-logos/'.$user->id);
             Password::deleteToken($user);
             $user->revokeSessions();
             Cache::forget('email-verification:'.$user->id);
@@ -74,7 +75,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'email',
         'password',
-        'business_name', 'business_address', 'business_email', 'business_phone',
+        'business_name', 'business_address', 'business_email', 'business_phone', 'business_logo_path',
         'whatsapp_number', 'website', 'default_currencies', 'base_currency',
         'target_currency', 'exchange_rate', 'usd_to_zwg_rate', 'default_tax_rate',
         'business_profile_completed_at', 'payment_reminders_enabled', 'quotations_enabled', 'feature_preferences',

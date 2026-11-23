@@ -5,15 +5,28 @@ namespace App\Http\Controllers;
 use App\DocumentPdf;
 use App\DocumentTotals;
 use App\Models\Invoice;
+use App\Models\InvoicePayment;
 use App\Models\InvoiceRefund;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 class PaymentWorkflowController extends Controller
 {
+    public function index(Request $request): View
+    {
+        $payments = InvoicePayment::query()
+            ->whereHas('invoice', fn ($query) => $query->where('user_id', $request->user()->id))
+            ->with('invoice')
+            ->orderByDesc('paid_on')->orderByDesc('id')
+            ->paginate(20);
+
+        return view('receipts.index', compact('payments'));
+    }
+
     public function void(Request $request, int $record, string $payment): RedirectResponse
     {
         $invoice = Invoice::where('user_id', $request->user()->id)->findOrFail($record);

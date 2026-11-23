@@ -29,6 +29,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('quotations/{record}/convert', [DocumentWorkflowController::class, 'convert'])->whereNumber('record')->name('quotations.convert');
     Route::post('{kind}/{record}/email', [DocumentWorkflowController::class, 'email'])->where('kind', 'invoices|quotations')->whereNumber('record')->middleware('throttle:outgoing-mail')->name('documents.email');
     Route::post('invoices/{record}/remind', [DocumentWorkflowController::class, 'remind'])->whereNumber('record')->middleware('throttle:outgoing-mail')->name('invoices.remind');
+    Route::get('receipts', [PaymentWorkflowController::class, 'index'])->name('receipts.index');
     Route::post('invoices/{record}/payments/{payment}/void', [PaymentWorkflowController::class, 'void'])->whereNumber(['record', 'payment'])->name('payments.void');
     Route::get('invoices/{record}/payments/{payment}/receipt', [PaymentWorkflowController::class, 'receipt'])->whereNumber(['record', 'payment'])->name('payments.receipt');
     Route::post('invoices/{record}/refunds', [PaymentWorkflowController::class, 'refund'])->whereNumber('record')->name('invoices.refunds');

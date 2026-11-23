@@ -123,6 +123,7 @@ class DocumentController extends Controller
         $model = $this->model($kind);
         $document = new $model(array_merge(Arr::except($data, ['items']), Arr::except($totals, ['items'])));
         $itemModel = $kind === 'invoices' ? InvoiceItem::class : QuotationItem::class;
+        $document->setRelation('user', $request->user());
         $document->setRelation('items', collect($totals['items'])->map(fn (array $item) => new $itemModel($item)));
         $pdfData = base64_encode($pdf->render($document, $kind));
 
@@ -221,6 +222,6 @@ class DocumentController extends Controller
         }
 
         return redirect()->route('documents.show', ['invoices', $document->id])
-            ->with('message', 'Payment status updated.');
+            ->with('message', $data['status'] === 'paid' ? 'Payment recorded. Your receipt is available to download.' : 'Payment status updated.');
     }
 }

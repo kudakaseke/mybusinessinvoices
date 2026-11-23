@@ -311,6 +311,8 @@ class WorkspaceController extends Controller
             $rules[$field] = ['nullable', 'string', 'max:255'];
         }
         $rules += [
+            'business_logo' => ['nullable', 'image', 'mimes:jpg,jpeg', 'max:2048'],
+            'remove_business_logo' => ['sometimes', 'boolean'],
             'business_address' => ['nullable', 'string', 'max:10000'],
             'business_email' => ['sometimes', 'required', 'email', 'max:255', Rule::in([$request->user()->business_email ?? $request->user()->email])],
             'website' => ['nullable', 'url', 'max:255'], 'base_currency' => ['required', Rule::in(['USD', 'ZWG'])],
@@ -338,7 +340,17 @@ class WorkspaceController extends Controller
         } else {
             $data['usd_to_zwg_rate'] = round(1 / (float) $data['exchange_rate'], 4);
         }
+        $oldLogo = $request->user()->business_logo_path;
+        if ($request->hasFile('business_logo')) {
+            $data['business_logo_path'] = $request->file('business_logo')->store('business-logos/'.$request->user()->id, 'local');
+        } elseif ($request->boolean('remove_business_logo')) {
+            $data['business_logo_path'] = null;
+        }
+        unset($data['business_logo'], $data['remove_business_logo']);
         $request->user()->fill($data)->save();
+        if ($oldLogo && array_key_exists('business_logo_path', $data)) {
+            Storage::disk('local')->delete($oldLogo);
+        }
 
         return back()->with('message', 'Business settings saved.');
     }

@@ -3,9 +3,14 @@
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new class extends Component
 {
+    use WithFileUploads;
+
+    public $business_logo = null;
+
     public bool $showSetup = true;
 
     public string $name = '';
@@ -42,6 +47,7 @@ new class extends Component
             'surname' => ['required', 'string', 'max:127'],
             'business_name' => ['required', 'string', 'max:255'],
             'business_email' => ['required', 'email', 'max:255', Rule::in([Auth::user()->business_email ?? Auth::user()->email])],
+            'business_logo' => ['nullable', 'image', 'mimes:jpg,jpeg', 'max:2048'],
             'business_phone' => ['required', 'string', 'max:255'],
             'business_address' => ['required', 'string', 'max:10000'],
             'whatsapp_number' => ['nullable', 'string', 'max:255'],
@@ -52,6 +58,10 @@ new class extends Component
         }
 
         $user = Auth::user();
+        if ($this->business_logo) {
+            $validated['business_logo_path'] = $this->business_logo->store('business-logos/'.$user->id, 'local');
+        }
+        unset($validated['business_logo']);
         $validated['name'] = trim($validated['name']).' '.trim($validated['surname']);
         unset($validated['surname']);
         $user->fill($validated);
@@ -80,6 +90,7 @@ new class extends Component
                 <legend class="mb-3 text-sm font-semibold">Business info</legend>
                 <flux:input wire:model="business_name" label="Business name" required autocomplete="organization" />
                 <flux:input wire:model="business_email" label="Business email" type="email" readonly />
+                <flux:input wire:model="business_logo" label="Business logo (optional, JPEG, max 2 MB)" type="file" accept="image/jpeg" />
                 <flux:input wire:model="business_phone" label="Business phone" type="tel" required autocomplete="tel" />
                 <flux:textarea wire:model="business_address" label="Business address" required autocomplete="street-address" />
                 <div class="grid gap-5 sm:grid-cols-2">

@@ -4,8 +4,10 @@ namespace App;
 
 use App\Models\CreditNote;
 use App\Models\InvoicePayment;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 class DocumentPdf
 {
@@ -14,6 +16,32 @@ class DocumentPdf
     private string $content = '';
 
     private int $y = 40;
+
+    private ?array $logo = null;
+
+    private function logo(?User $user): bool
+    {
+        $this->logo = null;
+        if (! $user?->business_logo_path || ! Storage::disk('local')->exists($user->business_logo_path)) {
+            return false;
+        }
+        $bytes = Storage::disk('local')->get($user->business_logo_path);
+        $size = @getimagesizefromstring($bytes);
+        if (! $size || $size[2] !== IMAGETYPE_JPEG || ! in_array($size['channels'] ?? 3, [1, 3, 4], true)) {
+            return false;
+        }
+        $this->logo = ['bytes' => $bytes, 'width' => $size[0], 'height' => $size[1], 'color' => match ($size['channels'] ?? 3) {
+            1 => 'DeviceGray', 4 => 'DeviceCMYK', default => 'DeviceRGB'
+        }];
+        $scale = min(180 / $size[0], 90 / $size[1]);
+        $width = round($size[0] * $scale, 2);
+        $height = round($size[1] * $scale, 2);
+        $x = 565 - $width;
+        $y = 842 - 25 - $height;
+        $this->content .= "q $width 0 0 $height $x $y cm /Logo Do Q\n";
+
+        return true;
+    }
 
     private function text(string $text, int $x, int $y, int $size = 10, bool $bold = false, bool $uppercase = true): void
     {
@@ -63,7 +91,9 @@ class DocumentPdf
         $number = $invoice ? $document->invoice_number : $document->quotation_number;
         $money = fn (mixed $amount): string => ($document->currency === 'USD' ? '$' : '').number_format((float) $amount, 2);
         $this->text($title, 30, 45, 20, true);
-        $this->block(mb_strimwidth((string) $document->business_name, 0, 44, '...'), 420, 43, 22);
+        if (! $this->logo($document->user)) {
+            $this->block(mb_strimwidth((string) $document->business_name, 0, 44, '...'), 420, 43, 22);
+        }
         foreach ([[$title.' number', $number], ['Date of issue', $document->issue_date->format('F j, Y')], [$invoice ? 'Date due' : 'Valid until', $document->due_date->format('F j, Y')]] as $index => [$label, $value]) {
             $this->text($label, 30, 76 + $index * 14, 10, $index === 0);
             $this->text($value, 125, 76 + $index * 14);
@@ -162,12 +192,13 @@ class DocumentPdf
     }
 
     /** @param array{clients: Collection, client: ?string, currency: string, entries: Collection, balance: int, charged: int, received: int, credited: int, daily: Collection, openingBalance: int, from: ?string, to: ?string, paymentInvoices: Collection, expenseEntries: Collection, expenseTotal: int} $data */
-    public function renderStatement(array $data, string $business): string
+    public function renderStatement(array $data, string $business, ?User $user = null): string
     {
         $this->pages = [];
         $this->content = '';
         $this->y = 45;
         $this->text('Client statement', 30, $this->y, 20, true);
+        $this->logo($user);
         $this->y = $this->block($business, 30, $this->y + 26, 80);
         $name = $data['client'] ? ($data['clients']->firstWhere('customer_email', $data['client'])?->customer_name ?? 'Client statement') : 'All clients';
         $this->y = $this->block($name, 30, $this->y + 10, 80);
@@ -255,6 +286,7 @@ class DocumentPdf
         $this->content = '';
         $invoice = $note->invoice;
         $this->text('Credit note', 30, 45, 20, true);
+        $this->logo($invoice->user);
         $this->y = $this->block($invoice->business_name, 30, 75, 80);
         $this->y = $this->block('Credit note: '.$note->number, 30, $this->y + 15, 80);
         $this->y = $this->block('Original invoice: '.$invoice->invoice_number, 30, $this->y, 80);
@@ -277,22 +309,53 @@ class DocumentPdf
         $this->pages = [];
         $this->content = '';
         $invoice = $payment->invoice;
-        $this->text('Payment receipt', 30, 45, 20, true);
-        $this->y = 90;
-        foreach ([
-            'Receipt number' => 'RCT-'.$payment->id,
-            'Business' => $invoice->business_name,
-            'Client' => $invoice->customer_name,
-            'Invoice' => $invoice->invoice_number,
-            'Payment date' => $payment->paid_on?->format('d M Y') ?? 'Original date unknown',
-            'Amount received' => $invoice->currency.' '.number_format($payment->amount, 2),
-            'Reference' => $payment->reference ?? 'Not provided',
-            'Current invoice balance' => $invoice->currency.' '.$invoice->balanceDue(),
-        ] as $label => $value) {
-            $this->y = $this->block($label.': '.$value, 30, $this->y, 85);
-            $this->y += 16;
+        $this->text('Receipt', 30, 45, 20, true);
+        if (! $this->logo($invoice->user)) {
+            $this->block(mb_strimwidth((string) $invoice->business_name, 0, 44, '...'), 420, 43, 22);
         }
-        $this->text('This receipt confirms the payment recorded against the invoice.', 30, $this->y + 20, 9);
+        foreach ([
+            ['Receipt number', 'RCT-'.$payment->id],
+            ['Payment date', $payment->paid_on?->format('F j, Y') ?? 'Original date unknown'],
+            ['Invoice number', $invoice->invoice_number],
+        ] as $index => [$label, $value]) {
+            $this->text($label, 30, 76 + $index * 14, 10, $index === 0);
+            $this->text($value, 125, 76 + $index * 14);
+        }
+
+        $businessLines = [];
+        foreach (array_filter([$invoice->business_name, $invoice->business_address, $invoice->business_email, $invoice->business_phone]) as $value) {
+            foreach (explode("\n", wordwrap(str_replace("\r", '', $value), 36, "\n", true)) as $line) {
+                $businessLines[] = $line;
+            }
+        }
+        $customerLines = [['Received from', true, true]];
+        foreach (['customer_name', 'customer_address', 'customer_phone', 'customer_email'] as $field) {
+            if (filled($invoice->$field)) {
+                foreach (explode("\n", wordwrap(str_replace("\r", '', $invoice->$field), 42, "\n", true)) as $line) {
+                    $customerLines[] = [$line, false, $field !== 'customer_email'];
+                }
+            }
+        }
+        $this->y = 139;
+        for ($index = 0; $index < max(count($businessLines), count($customerLines)); $index++) {
+            $this->space(14);
+            if (isset($businessLines[$index])) {
+                $this->text($businessLines[$index], 30, $this->y, 10, $index === 0);
+            }
+            if (isset($customerLines[$index])) {
+                [$line, $bold, $uppercase] = $customerLines[$index];
+                $this->text($line, 290, $this->y, 10, $bold, $uppercase);
+            }
+            $this->y += 14;
+        }
+        $this->space(80);
+        $this->y += 24;
+        $this->text('Amount received: '.$invoice->currency.' '.number_format((float) $payment->amount, 2), 30, $this->y, 14, true);
+        $this->y += 30;
+        if (filled($payment->reference)) {
+            $this->y = $this->block('Reference: '.$payment->reference, 30, $this->y, 85);
+        }
+        $this->text('Thank you for your payment.', 30, $this->y + 20, 9);
         $this->pages[] = $this->content;
 
         return $this->encode();
@@ -302,13 +365,19 @@ class DocumentPdf
     {
         $objects = [1 => '<< /Type /Catalog /Pages 2 0 R >>', 2 => '', 3 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>', 4 => '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'];
         $kids = [];
+        $logoId = 5 + count($this->pages) * 2;
         foreach ($this->pages as $index => $content) {
             $page = 5 + $index * 2;
             $stream = $page + 1;
             $kids[] = "$page 0 R";
             $content .= 'BT /F1 8 Tf 1 0 0 1 510 25 Tm (Page '.($index + 1).' of '.count($this->pages).") Tj ET\n";
-            $objects[$page] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents $stream 0 R >>";
+            $imageResource = $this->logo ? " /XObject << /Logo $logoId 0 R >>" : '';
+            $objects[$page] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>$imageResource >> /Contents $stream 0 R >>";
             $objects[$stream] = '<< /Length '.strlen($content)." >>\nstream\n".$content.'endstream';
+        }
+        if ($this->logo) {
+            $bytes = $this->logo['bytes'];
+            $objects[$logoId] = '<< /Type /XObject /Subtype /Image /Width '.$this->logo['width'].' /Height '.$this->logo['height'].' /ColorSpace /'.$this->logo['color'].' /BitsPerComponent 8 /Filter /DCTDecode /Length '.strlen($bytes)." >>\nstream\n".$bytes."\nendstream";
         }
         $objects[2] = '<< /Type /Pages /Count '.count($this->pages).' /Kids ['.implode(' ', $kids).'] >>';
         $pdf = "%PDF-1.4\n";

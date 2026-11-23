@@ -35,7 +35,7 @@ class StatementController extends Controller
         $data = $this->statementData($request);
         $business = $request->user()->business_name ?? $request->user()->name;
 
-        return response($pdf->renderStatement($data, $business), 200, [
+        return response($pdf->renderStatement($data, $business, $request->user()), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="Client-statement-'.$data['currency'].'.pdf"',
             'Cache-Control' => 'private, no-store',

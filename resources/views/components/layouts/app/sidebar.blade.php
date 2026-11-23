@@ -24,6 +24,7 @@
 <flux:navlist.item :href="route('documents.index', $kind)" :current="request()->is($kind.'*')" wire:navigate>{{ $label }}</flux:navlist.item>
 @endif
 @endforeach
+<flux:navlist.item :href="route('receipts.index')" :current="request()->routeIs('receipts.*')" wire:navigate>Receipts</flux:navlist.item>
 <flux:navlist.item :href="route('records.index', 'expenses')" :current="request()->is('expenses*')" wire:navigate>Expenses</flux:navlist.item>
 @if(auth()->user()->showsFeature('statements'))
 <flux:navlist.item :href="route('statements')" :current="request()->routeIs('statements')" wire:navigate>Statements</flux:navlist.item>
